@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Causal Explorer Dashboard</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100vh; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; display: flex; background-color: #f1f5f9; box-sizing: border-box; }
+        *, *:before, *:after { box-sizing: inherit; }
+
+        #svg-container {
+            flex: 1; height: 100%; background: #ffffff; position: relative; overflow: hidden; cursor: default;   
+            user-select: none; -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; 
+            touch-action: none;
+        }
+
+        #resizer { width: 6px; background-color: #cbd5e1; cursor: col-resize; z-index: 20; flex-shrink: 0; transition: background-color 0.2s ease; }
+        #resizer:hover, #resizer.is-dragging { background-color: #00897b; }
+
+        .sidebar-container { width: 38%; min-width: 300px; max-width: 80vw; height: 100%; background-color: #f8fafc; padding: 10px; color: #334155; display: flex; flex-direction: column; justify-content: space-between; box-shadow: -4px 0 15px rgba(0,0,0,0.05); z-index: 10; }
+        .sidebar-content { flex-grow: 1; overflow-y: auto; padding-right: 15px; margin-bottom: 10px; }
+        .sidebar-content::-webkit-scrollbar { width: 8px; }
+        .sidebar-content::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+        .sidebar-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .sidebar-footer { flex-shrink: 0; border-top: 2px solid #cbd5e1; padding-top: 10px; background-color: #f8fafc; }
+
+        .welcome-card { background: #ffffff; border-radius: 14px; padding: 25px 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 2px solid #e2e8f0; text-align: center; margin-top: 15px; }
+        .welcome-icon { font-size: 40px; margin-bottom: 10px; }
+        .welcome-title { font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 10px; margin-top: 0;}
+        .welcome-text { font-size: 16px; color: #64748b; margin-bottom: 20px; line-height: 1.5; }
+        .instruction-box { text-align: left; background: #f1f5f9; border-radius: 10px; padding: 15px; }
+        .instruction-step { display: flex; align-items: flex-start; margin-bottom: 12px; }
+        .instruction-step:last-child { margin-bottom: 0; }
+        .step-number { background: #00897b; color: #ffffff; font-size: 15px; font-weight: bold; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px; flex-shrink: 0; }
+        .step-text { font-size: 14px; line-height: 1.4; color: #475569; margin-top: 2px;}
+
+        .card { background: #ffffff; border-radius: 10px; padding: 10px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 2px solid #e2e8f0; margin-bottom: 8px; } 
+        .connection-header-card { background: linear-gradient(135deg, #0f172a, #1e293b); border: none; padding: 8px 12px; margin-bottom: 10px; }
+        .connection-nodes { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; }
+        .node-pill { padding: 8px 16px; border-radius: 9999px; font-size: 15px; font-weight: bold; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .cause-pill { background-color: #eff6ff; color: #1d4ed8; border: 2px solid #93c5fd; }
+        .effect-pill { background-color: #f5f3ff; color: #7e22ce; border: 2px solid #c4b5fd; }
+        .connection-arrow { font-size: 20px; color: #94a3b8; font-weight: bold; }
+
+        .total-effect-card { text-align: left; padding: 8px 10px; }                                                                    
+        .effect-inline-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+        .card-label { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: #64748b; font-weight: 700; margin: 0; }
+        .effect-value { font-size: 24px; font-weight: 900; margin: 0; }                                                                
+        .effect-value.positive { color: #16a34a; }
+        .effect-value.negative { color: #dc2626; }
+        .effect-badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: bold; margin: 0; }
+        .effect-badge.positive { background: #dcfce7; color: #15803d; }
+        .effect-badge.negative { background: #fee2e2; color: #b91c1c; }
+        .effect-description { font-size: 12px; color: #475569; line-height: 1.4; padding-top: 8px; border-top: 2px solid #f1f5f9; margin-bottom: 0; text-align: center; }
+
+        .pathways-section-title { font-size: 14px; font-weight: 800; margin-top: 0; margin-bottom: 10px; display: flex; align-items: center; }
+        .pathways-section-title.positive { color: #1b5e20; }
+        .pathways-section-title.negative { color: #b71c1c; }
+
+        .pathways-list { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; padding-right: 4px; }
+        .pathways-list::-webkit-scrollbar { width: 6px; }
+        .pathways-list::-webkit-scrollbar-track { background: #f8fafc; border-radius: 3px; }
+        .pathways-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+        .path-row { display: flex; align-items: center; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 4px; margin-right: 6px; transition: all 0.2s ease; cursor: pointer; }
+        .path-row:hover { background: #ffffff; border-color: #00897b; box-shadow: 0 4px 12px rgba(0,137,123,0.08); transform: translateX(4px); }
+        .path-chain { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; flex-grow: 1; }
+        .path-node-badge { background: #ffffff; border: 1px solid #cbd5e1; color: #334155; padding: 2px 6px; border-radius: 4px; font-size: 13px; font-weight: bold; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .path-arrow { font-size: 13px; font-weight: bold; }
+        .path-arrow.positive { color: #16a34a; }
+        .path-arrow.negative { color: #dc2626; }
+        .path-value-badge { font-size: 14px; font-weight: 800; padding: 3px 8px; border-radius: 4px; margin-left: 8px; flex-shrink: 0; }
+        .path-value-badge.positive { background: #e8f5e9; color: #2e7d32; }
+        .path-value-badge.negative { background: #ffebee; color: #c62828; }
+        .no-paths-text { font-size: 13px; color: #94a3b8; font-style: italic; padding: 4px 0; }
+
+        .summary-card { background: #ffffff; border-radius: 12px; padding: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: 2px solid #e2e8f0; margin-bottom: 12px; }
+        .summary-title { font-size: 14px; font-weight: 800; color: #1e3a8a; margin-bottom: 8px; margin-top:0; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
+        .summary-list { display: flex; flex-direction: column; gap: 6px; }
+        .summary-item { font-size: 12px; line-height: 1.4; color: #475569; }
+        .summary-item strong { color: #0f172a; }
+
+        .toggle-box { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; }
+        .btn-html { flex: 1; padding: 10px 8px; font-size: 13px; font-weight: bold; border-radius: 8px; border: 2px solid #90a4ae; background-color: #cfd8dc; color: #546e7a; cursor: pointer; text-align: center; transition: all 0.2s ease; }
+        .btn-html.active-lang { background-color: #00897b; border-color: #004d40; color: #ffffff; }
+        .btn-html.btn-paths { flex: 1.5; background-color: #f1f5f9; border-color: #cbd5e1; color: #475569; }
+        .btn-html.btn-paths.active-paths { background-color: #37474f; border-color: #21272a; color: #ffffff; }
+
+        .zoom-controls { display: none; position: absolute; bottom: 15px; right: 15px; z-index: 50; flex-direction: column; gap: 8px; }
+        .zoom-btn { width: 44px; height: 44px; background: #ffffff; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 24px; font-weight: bold; color: #334155; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer; user-select: none; }
+        .zoom-btn:active { background: #e2e8f0; }
+
+        @media (min-width: 769px) {
+            .mobile-only { display: none !important; }
+        }
+
+        @media (max-width: 768px) {
+            body, html { flex-direction: column; height: 100%; overflow: auto; }
+            #svg-container { flex: none; height: 60vh; width: 100%; border-bottom: 3px solid #cbd5e1; touch-action: none; }
+            #resizer { display: none; }
+            .sidebar-container { width: 100% !important; max-width: 100%; height: auto; min-height: 40vh; padding: 10px; }
+            .zoom-controls { display: flex; }
+            .mobile-only { display: block !important; flex: 100%; margin-top: 5px; background-color: #e2e8f0; border-color: #cbd5e1;}
+            .node-has-tip { cursor: pointer; }
+        }
+        </style>
+</head>
+<body>
+    <div id="svg-container">
+        <svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0.00 0.00 6000.00 3963.00" preserveAspectRatio="xMidYMid meet" overflow="visible">
+<defs><filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter><filter id="edge-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs><g id="graph-layer"><g id="graph0" class="graph" transform="scale(0.206077 0.206077) rotate(0) translate(4 19227.28)">
+<polygon fill="#f8fafb" stroke="none" points="-4,4 -4,-19227.28 29111.39,-19227.28 29111.39,4 -4,4" />
+<text xml:space="preserve" text-anchor="middle" x="14553.7" y="-18839.28" font-family="Helvetica,sans-Serif" font-size="400.00" fill="#1a1a2e">Ohasama Phase 6 | Whole_Cohort | N_CCA=317 | Features=39</text>
+
+<g id="node1" class="node node-has-tip" data-nodeid="gender" data-label-en="SEX" data-label-jp="性別" data-tooltip="Demographics: Gender" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="3520.67" cy="-18279" rx="514.53" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="3520.67" y="-18154.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">SEX</text>
+</g>
+
+<g id="node13" class="node node-has-tip" data-nodeid="gtt_hr_mean" data-label-en="CHRg_Avg" data-label-jp="GTT随時脈拍" data-tooltip="GTT : Heart Rate Average" data-parents="gender:-0.195270,med_antihypertensive_use:-0.148744">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="3737.67" cy="-13699" rx="1234.18" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="3737.67" y="-13574.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">CHRg_Avg</text>
+</g>
+
+<g id="edge19" class="edge">
+<title>gender-&gt;gtt_hr_mean</title>
+<path fill="none" stroke="#b71c1c" stroke-width="9.76" d="M3023.16,-18203.13C2515.01,-18098.36 1746.56,-17855.77 1353.67,-17313.25 930.89,-16729.42 936.7,-16344.6 1248.67,-15694.77 1614.52,-14932.74 2429.01,-14370.24 3027.05,-14040.26" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="9.76" points="3091.52,-14160.79 3167.88,-13964.7 2962.27,-13919.9 3091.52,-14160.79" />
+<text xml:space="preserve" text-anchor="middle" x="1613.17" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.20</text>
+</g>
+
+<g id="node20" class="node node-has-tip" data-nodeid="hematology_rbc_count" data-label-en="RBC" data-label-jp="赤血球数" data-tooltip="Hematology : Red Blood Cell Count" data-parents="gender:0.391219,hematology_mch:-0.472764,hematology_mchc:0.239073,liverfn_albumin:0.181933">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="15149.67" cy="-9208" rx="722.95" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="15149.67" y="-9045.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">赤血球数</text>
+</g>
+
+<g id="edge21" class="edge">
+<title>gender-&gt;hematology_rbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M3314.64,-18009.02C3080.9,-17718.34 2675.84,-17256.36 2244.67,-16954.75 1641.16,-16532.58 1164.82,-16877.45 729.67,-16283.23 -29.11,-15247.05 -324.53,-14409.51 475.42,-13404.77 2629.34,-10699.47 4932.91,-13163.13 8067.67,-11703.23 9132.37,-11207.38 9082.54,-10559.79 10156.67,-10084.75 11506.17,-9487.93 13229.74,-9297.22 14258.51,-9236.67" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="14271.9,-9488.32 14418.07,-9228.05 14244.71,-8985.05 14271.9,-9488.32" />
+<text xml:space="preserve" text-anchor="middle" x="880.05" y="-13574.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.39</text>
+</g>
+
+<g id="node22" class="node node-has-tip" data-nodeid="hematology_mch" data-label-en="mch" data-label-jp="平均赤血球Hb量" data-tooltip="Hematology : Mean Corpuscular Hemoglobin (Average Hb amount per RBC)" data-parents="gender:0.283728,age_at_gtt:0.174142">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="12570.67" cy="-15989" rx="1355.63" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="12570.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">平均赤血球Hb量</text>
+</g>
+
+<g id="edge28" class="edge">
+<title>gender-&gt;hematology_mch</title>
+<path fill="none" stroke="#1b5e20" stroke-width="14.19" d="M3731.33,-18010.1C3993.54,-17698.14 4472.56,-17195 5007.42,-16954.75 7338.45,-15907.71 8186.24,-16632.23 10717.67,-16283.23 10914.75,-16256.06 11123.26,-16225.16 11326.54,-16193.86" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="14.19" points="11356.74,-16390.16 11484.32,-16169.32 11295.7,-15997.66 11356.74,-16390.16" />
+<text xml:space="preserve" text-anchor="middle" x="5412.05" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.28</text>
+</g>
+
+<g id="node24" class="node node-has-tip" data-nodeid="hematology_wbc_count" data-label-en="WBC" data-label-jp="白血球数" data-tooltip="Hematology : White Blood Cell Count" data-parents="gender:0.152734,ogtt_hba1c_jds:0.108929,gtt_hr_mean:0.171839,hematology_platelet_count:0.204337,liverfn_alt_gpt:0.133692,liverfn_albumin:-0.244559,lipidprofile_aip:0.185747">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="7284.67" cy="-9208" rx="722.95" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="7284.67" y="-9045.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">白血球数</text>
+</g>
+
+<g id="edge32" class="edge">
+<title>gender-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="7.64" d="M3587.86,-17987.14C3637.53,-17693.13 3661.19,-17242.29 3425.67,-16954.75 2716.49,-16088.92 1676.38,-17173.91 998.67,-16283.23 568.55,-15717.93 747.55,-15219.27 1604.42,-13404.77 2380.72,-11760.92 2492.28,-11109.79 3993.67,-10084.75 4932.68,-9443.67 5375.63,-9751.55 6471.67,-9449.19 6509.92,-9438.64 6549.13,-9427.65 6588.67,-9416.43" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="7.64" points="6618.16,-9519.19 6742.32,-9372.17 6558.98,-9313.72 6618.16,-9519.19" />
+<text xml:space="preserve" text-anchor="middle" x="2009.05" y="-13574.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.15</text>
+</g>
+
+<g id="node32" class="node node-has-tip" data-nodeid="hematology_platelet_count" data-label-en="PLT" data-label-jp="血小板数" data-tooltip="Hematology : Platelet Count (Cells responsible for clotting)" data-parents="gender:-0.175034,age_at_gtt:-0.209656,med_antihypertensive_use:0.139101,hematology_mch:-0.129588,liverfn_albumin:-0.180775">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="13630.67" cy="-13699" rx="722.95" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="13630.67" y="-13536.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">血小板数</text>
+</g>
+
+<g id="edge54" class="edge">
+<title>gender-&gt;hematology_platelet_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="8.75" d="M3765.11,-18019.61C4102.76,-17653.71 4717.57,-16954.2 5136.67,-16283.23 5289.51,-16038.54 5198.66,-15890.42 5410.67,-15694.77 6377.17,-14802.88 6910.12,-14988.92 8184.67,-14664.75 10220.29,-14147.02 10829.46,-14520.3 12862.67,-13993.23 12916.76,-13979.21 12972.25,-13962.62 13027.47,-13944.58" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="8.75" points="13067.91,-14060.23 13178.3,-13891.63 12986.75,-13829.02 13067.91,-14060.23" />
+<text xml:space="preserve" text-anchor="middle" x="5775.17" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.18</text>
+</g>
+
+<g id="node35" class="node node-has-tip" data-nodeid="liverfn_gamma_gtp" data-label-en="gGTP" data-label-jp="γGTP" data-tooltip="Liver Function : Gamma-Glutamyl Transferase (Linked to alcohol/bile)" data-parents="gender:0.189851,liverfn_alt_gpt:0.271472">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="8838.67" cy="-15989" rx="665.14" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="8838.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">gGTP</text>
+</g>
+
+<g id="edge61" class="edge">
+<title>gender-&gt;liverfn_gamma_gtp</title>
+<path fill="none" stroke="#1b5e20" stroke-width="9.49" d="M3931.34,-18101.32C4856.09,-17703.46 7106.78,-16735.12 8209.2,-16260.82" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="9.49" points="8261.55,-16382.97 8356.01,-16197.66 8156.51,-16138.82 8261.55,-16382.97" />
+<text xml:space="preserve" text-anchor="middle" x="6902.7" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.19</text>
+</g>
+
+<g id="node36" class="node node-has-tip" data-nodeid="liverfn_total_protein" data-label-en="TP" data-label-jp="総蛋白" data-tooltip="Liver Function : Total Protein (Sum of albumin and globulin)" data-parents="gender:-0.117501,gtt_sbp_mean:0.199552,hematology_platelet_count:0.133296,liverfn_albumin:0.340178">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="13922.67" cy="-11409" rx="557.48" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="13922.67" y="-11246.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">総蛋白</text>
+</g>
+
+<g id="edge63" class="edge">
+<title>gender-&gt;liverfn_total_protein</title>
+<path fill="none" stroke="#b71c1c" stroke-width="5.88" d="M4023.17,-18214.44C5494.27,-18016.87 9737.57,-17361.29 10520.67,-16283.23 10674.38,-16071.63 10644.64,-15925.06 10520.67,-15694.77 10263.76,-15217.52 9759.59,-15500.51 9502.67,-15023.25 9427.15,-14882.95 9404.67,-14790.38 9502.67,-14664.75 10257.18,-13697.6 11175.32,-14697.44 12179.67,-13993.23 12598.03,-13699.9 13347.9,-12433.16 13712.34,-11789.1" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="5.88" points="13784.01,-11829.44 13790.69,-11649.66 13640.61,-11748.85 13784.01,-11829.44" />
+<text xml:space="preserve" text-anchor="middle" x="9867.17" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.12</text>
+</g>
+
+<g id="node2" class="node node-has-tip" data-nodeid="age_at_gtt" data-label-en="AGE_GTT" data-label-jp="年齢_GTT" data-tooltip="Demographic: Age at time of GTT Examination" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18249.67" cy="-18279" rx="1130.24" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="18249.67" y="-18154.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">AGE_GTT</text>
+</g>
+
+<g id="node8" class="node node-has-tip" data-nodeid="ogtt_hba1c_jds" data-label-en="HbA1c" data-label-jp="HbA1c(JDS)" data-tooltip="Diabetes : Japanese Standard HbA1c (Local standard)_Harmonised" data-parents="age_at_gtt:0.202510,dm_tx_ohasama_hosp:0.127277,hematology_mch:-0.220718,liverfn_alt_gpt:0.241266">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="6520.67" cy="-13699" rx="1368.36" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="6520.67" y="-13574.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">HbA1c(JDS)</text>
+</g>
+
+<g id="edge8" class="edge">
+<title>age_at_gtt-&gt;ogtt_hba1c_jds</title>
+<path fill="none" stroke="#1b5e20" stroke-width="10.13" d="M17142.27,-18219.72C15006.86,-18097.25 10483.23,-17784.96 9958.67,-17313.25 9410.38,-16820.18 9814.17,-16398.42 9593.67,-15694.77 9556.74,-15576.91 9264.61,-14750.46 9175.67,-14664.75 8791.95,-14294.95 8255.62,-14065.27 7765.39,-13923.38" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="10.13" points="7802.85,-13786.66 7611.14,-13881.23 7728.12,-14060.15 7802.85,-13786.66" />
+<text xml:space="preserve" text-anchor="middle" x="10071.41" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.20</text>
+</g>
+
+<g id="node10" class="node node-has-tip" data-nodeid="med_antihypertensive_use" data-label-en="DRG_HT" data-label-jp="高血圧治療薬" data-tooltip="Medications : Taking Antihypertensive Meds (あり→１; なし→０ )" data-parents="age_at_gtt:0.144743,hx_ht:0.757285">
+<path fill="#fff7ed" stroke="#ea580c" d="M7619.62,-16197.05C7619.62,-16197.05 6241.72,-16197.05 6241.72,-16197.05 6235.72,-16197.05 6229.72,-16191.05 6229.72,-16185.05 6229.72,-16185.05 6229.72,-15792.95 6229.72,-15792.95 6229.72,-15786.95 6235.72,-15780.95 6241.72,-15780.95 6241.72,-15780.95 7619.62,-15780.95 7619.62,-15780.95 7625.62,-15780.95 7631.62,-15786.95 7631.62,-15792.95 7631.62,-15792.95 7631.62,-16185.05 7631.62,-16185.05 7631.62,-16191.05 7625.62,-16197.05 7619.62,-16197.05" />
+<text xml:space="preserve" text-anchor="middle" x="6930.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">DRG_HT</text>
+</g>
+
+<g id="edge13" class="edge">
+<title>age_at_gtt-&gt;med_antihypertensive_use</title>
+<path fill="none" stroke="#1b5e20" stroke-width="7.24" d="M17127.25,-18243.62C15537.91,-18172.88 12551.56,-17958.48 10095.42,-17313.25 9139.25,-17062.06 8092.36,-16580.21 7474.5,-16272.48" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="7.24" points="7520.08,-16181.99 7331.61,-16200.57 7428.98,-16363 7520.08,-16181.99" />
+<text xml:space="preserve" text-anchor="middle" x="10500.05" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.14</text>
+</g>
+
+<g id="node11" class="node node-has-tip" data-nodeid="gtt_sbp_mean" data-label-en="CBP_Sg_Avg" data-label-jp="GTT随時血圧収縮期" data-tooltip="GTT : Systolic BP Average" data-parents="age_at_gtt:0.310627">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="17925.67" cy="-13699" rx="1498.82" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="17925.67" y="-13574.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">CBP_Sg_Avg</text>
+</g>
+
+<g id="edge15" class="edge">
+<title>age_at_gtt-&gt;gtt_sbp_mean</title>
+<path fill="none" stroke="#1b5e20" stroke-width="15.53" d="M17851.81,-18003.17C17395.74,-17661.25 16673.14,-17030.41 16377.42,-16283.23 16048.87,-15453.07 16847.44,-14581.07 17415.7,-14092.39" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="15.53" points="17554.76,-14259.55 17538.04,-13990.1 17275.83,-13925.91 17554.76,-14259.55" />
+<text xml:space="preserve" text-anchor="middle" x="16782.05" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.31</text>
+</g>
+
+<g id="node12" class="node node-has-tip" data-nodeid="gtt_dbp_mean" data-label-en="CBP_Dg_Avg" data-label-jp="GTT随時血圧拡張期" data-tooltip="GTT : Diastolic BP Average" data-parents="age_at_gtt:-0.352010,gtt_sbp_mean:0.723495,gtt_hr_mean:0.248373">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="16894.67" cy="-11409" rx="1511.02" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="16894.67" y="-11284.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">CBP_Dg_Avg</text>
+</g>
+
+<g id="edge16" class="edge">
+<title>age_at_gtt-&gt;gtt_dbp_mean</title>
+<path fill="none" stroke="#b71c1c" stroke-width="17.6" d="M18136.87,-17986.01C18046.8,-17700.94 17964.53,-17265.82 18157.67,-16954.75 18512.63,-16383.06 19159.72,-16854.91 19514.67,-16283.23 19852.08,-15739.8 19711.69,-14013.33 19514.67,-13404.77 19340.66,-12867.26 19198.17,-12742.99 18769.67,-12374.75 18466.72,-12114.4 18081.39,-11900.72 17738.93,-11741.22" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="17.6" points="17840.53,-11516.73 17593.35,-11675.54 17637.86,-11965.94 17840.53,-11516.73" />
+<text xml:space="preserve" text-anchor="middle" x="20082.42" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.35</text>
+</g>
+
+<g id="node21" class="node node-has-tip" data-nodeid="hematology_mcv" data-label-en="mcv" data-label-jp="平均赤血球容積" data-tooltip="Hematology : Mean Corpuscular Volume (Average size of red blood cells)" data-parents="age_at_gtt:0.096204,hx_dyslipidemia:0.092640,hematology_mch:0.768380">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="21474.67" cy="-13699" rx="1219.33" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="21474.67" y="-13536.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">平均赤血球容積</text>
+</g>
+
+<g id="edge25" class="edge">
+<title>age_at_gtt-&gt;hematology_mcv</title>
+<path fill="none" stroke="#1b5e20" stroke-width="5" d="M18190.49,-17984.79C18149.35,-17696.25 18134.32,-17256.28 18344.67,-16954.75 18759.58,-16360.02 19283.76,-16758.24 19831.67,-16283.23 19928.41,-16199.36 20810.52,-14777.96 21240.79,-14080.24" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="5" points="21300.26,-14117.17 21324.59,-13944.23 21181.07,-14043.73 21300.26,-14117.17" />
+<text xml:space="preserve" text-anchor="middle" x="20624.75" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.10</text>
+</g>
+
+<g id="edge29" class="edge">
+<title>age_at_gtt-&gt;hematology_mch</title>
+<path fill="none" stroke="#1b5e20" stroke-width="8.71" d="M17637.54,-18031.38C16603.96,-17614.96 14513.65,-16772.8 13367.3,-16310.95" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="8.71" points="13413.06,-16197.97 13219.1,-16251.24 13321.96,-16424.1 13413.06,-16197.97" />
+<text xml:space="preserve" text-anchor="middle" x="16154.81" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.17</text>
+</g>
+
+<g id="node26" class="node node-has-tip" data-nodeid="hematology_eosinophil_count" data-label-en="eosino" data-label-jp="好酸球" data-tooltip="Hematology : Eosinophils (Associated with allergies/parasites)" data-parents="age_at_gtt:-0.128477">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="26680.67" cy="-15989" rx="790.83" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="26680.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">eosino</text>
+</g>
+
+<g id="edge42" class="edge">
+<title>age_at_gtt-&gt;hematology_eosinophil_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="6.42" d="M18462,-17989.8C18711.11,-17676.05 19155.17,-17187.99 19662.67,-16954.75 22155.81,-15808.93 23119.1,-16869.01 25799.67,-16283.23 25852.14,-16271.76 25905.87,-16258.31 25959.65,-16243.6" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="6.42" points="25984.97,-16329.89 26113,-16198.38 25934.1,-16157.37 25984.97,-16329.89" />
+<text xml:space="preserve" text-anchor="middle" x="20027.17" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.13</text>
+</g>
+
+<g id="edge55" class="edge">
+<title>age_at_gtt-&gt;hematology_platelet_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="10.48" d="M19069.98,-18076.17C19788.28,-17859.64 20658.37,-17475.34 20249.67,-16954.75 19473.31,-15965.82 18473.46,-17080.95 17501.67,-16283.23 17278.69,-16100.18 17424.35,-15905.84 17227.67,-15694.77 16402.72,-14809.44 15093.73,-14222.12 14303.04,-13926.21" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="10.48" points="14353.52,-13788.41 14152.82,-13871.23 14252.63,-14064.04 14353.52,-13788.41" />
+<text xml:space="preserve" text-anchor="middle" x="17866.17" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.21</text>
+</g>
+
+<g id="node33" class="node node-has-tip" data-nodeid="liverfn_ast_got" data-label-en="GOT" data-label-jp="GOT" data-tooltip="Liver Function : Aspartate Aminotransferase (Liver/heart enzyme)" data-parents="age_at_gtt:0.171139,liverfn_alt_gpt:0.900274">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18872.67" cy="-15989" rx="551.65" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="18872.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">GOT</text>
+</g>
+
+<g id="edge59" class="edge">
+<title>age_at_gtt-&gt;liverfn_ast_got</title>
+<path fill="none" stroke="#1b5e20" stroke-width="8.56" d="M18975.9,-18053.11C19544.48,-17860.63 20266.64,-17574.1 20436.67,-17313.25 20747.94,-16835.74 20056.56,-16437.51 19495.9,-16206.43" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="8.56" points="19540.23,-16095.14 19347.43,-16147.86 19452.3,-16318.01 19540.23,-16095.14" />
+<text xml:space="preserve" text-anchor="middle" x="20918.33" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.17</text>
+</g>
+
+<g id="node3" class="node node-has-tip" data-nodeid="phy_bmi" data-label-en="BMI" data-label-jp="BMI" data-tooltip="Anthropometric: Body Mass Index" data-parents="phy_bmi_class:0.756206,hematology_hematocrit:0.075759">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18390.67" cy="-2778" rx="475.81" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="18390.67" y="-2653.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">BMI</text>
+</g>
+
+<g id="node9" class="node node-has-tip" data-nodeid="phy_waist_circumference" data-label-en="Waist" data-label-jp="腹囲" data-tooltip="Anthropometric : Waist Circumference" data-parents="phy_bmi:0.820158">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18390.67" cy="-489" rx="656.12" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="18390.67" y="-364.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">Waist</text>
+</g>
+
+<g id="edge12" class="edge">
+<title>phy_bmi-&gt;phy_waist_circumference</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M18390.67,-2483.28C18390.67,-2096.21 18390.67,-1411.03 18390.67,-953.66" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="18642.67,-954 18390.67,-794 18138.67,-954 18642.67,-954" />
+<text xml:space="preserve" text-anchor="middle" x="18795.3" y="-1509.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.82</text>
+</g>
+
+<g id="node4" class="node node-has-tip" data-nodeid="phy_bmi_class" data-label-en="BMI_class" data-label-jp="BMI分類" data-tooltip="Anthropometric: BMI Classification&#10;(Underweight: &lt;18.5, Normal: 18.5-24.9,  Overweight: 25.0-29.9, Obese: &gt;=30.0)" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M20565.12,-5188.05C20565.12,-5188.05 18938.22,-5188.05 18938.22,-5188.05 18932.22,-5188.05 18926.22,-5182.05 18926.22,-5176.05 18926.22,-5176.05 18926.22,-4783.95 18926.22,-4783.95 18926.22,-4777.95 18932.22,-4771.95 18938.22,-4771.95 18938.22,-4771.95 20565.12,-4771.95 20565.12,-4771.95 20571.12,-4771.95 20577.12,-4777.95 20577.12,-4783.95 20577.12,-4783.95 20577.12,-5176.05 20577.12,-5176.05 20577.12,-5182.05 20571.12,-5188.05 20565.12,-5188.05" />
+<text xml:space="preserve" text-anchor="middle" x="19751.67" y="-4855.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">BMI_class</text>
+</g>
+
+<g id="edge1" class="edge">
+<title>phy_bmi_class-&gt;phy_bmi</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M19690.24,-4771.62C19609.83,-4517.7 19454.09,-4079.98 19244.67,-3743.75 19111.53,-3529.98 18930.32,-3317.63 18769.07,-3146.81" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="18950.13,-2971.53 18657.86,-3032.25 18588.48,-3322.57 18950.13,-2971.53" />
+<text xml:space="preserve" text-anchor="middle" x="19838.1" y="-3798.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.76</text>
+</g>
+
+<g id="node5" class="node node-has-tip" data-nodeid="ogtt_glucose_0min" data-label-en="BS0" data-label-jp="血糖前" data-tooltip="Diabetes : Fasting Blood Sugar (Time 0)" data-parents="ogtt_hba1c_jds:0.454622,gtt_hr_mean:0.162784,hematology_hematocrit:0.119741">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="2588.67" cy="-2778" rx="501.27" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="2588.67" y="-2653.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">BS0</text>
+</g>
+
+<g id="node6" class="node node-has-tip" data-nodeid="ogtt_insulin_0min" data-label-en="IRI0" data-label-jp="インスリン空腹時" data-tooltip="Diabetes : Fasting Insulin (Time 0)" data-parents="ogtt_homa_ir:1.060953">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="4665.67" cy="-7094" rx="1384.8" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="4665.67" y="-6931.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">インスリン空腹時</text>
+</g>
+
+<g id="node7" class="node node-has-tip" data-nodeid="ogtt_homa_ir" data-label-en="HOMA_IR" data-label-jp="インスリン抵抗性指数" data-tooltip="Diabetes : Homeostatic Model Assessment for Insulin Resistance [:=(IRI0 * BS0) / 405]" data-parents="lipidprofile_aip:0.394924">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="4665.67" cy="-9208" rx="1715.72" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="4665.67" y="-9045.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">インスリン抵抗性指数</text>
+</g>
+
+<g id="edge6" class="edge">
+<title>ogtt_homa_ir-&gt;ogtt_insulin_0min</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M4665.67,-8966.53C4665.67,-8610.95 4665.67,-7940.24 4665.67,-7505.79" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="4917.67,-7505.99 4665.67,-7345.99 4413.67,-7505.99 4917.67,-7505.99" />
+<text xml:space="preserve" text-anchor="middle" x="5070.3" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+1.06</text>
+</g>
+
+<g id="edge3" class="edge">
+<title>ogtt_hba1c_jds-&gt;ogtt_glucose_0min</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M5810.33,-13447.14C4677.62,-13025.09 2588.67,-12146.86 2588.67,-11410 2588.67,-11410 2588.67,-11410 2588.67,-4979 2588.67,-4379.61 2588.67,-3688.37 2588.67,-3243.13" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="2840.67,-3243.24 2588.67,-3083.24 2336.67,-3243.24 2840.67,-3243.24" />
+<text xml:space="preserve" text-anchor="middle" x="2993.3" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.45</text>
+</g>
+
+<g id="edge33" class="edge">
+<title>ogtt_hba1c_jds-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="5.45" d="M5983.32,-13427.99C5207.01,-12997.58 3908.55,-12103.02 4331.67,-11114.77 4592.75,-10505.01 4864.06,-10459.03 5411.67,-10084.75 5794.32,-9823.22 6267.44,-9602.73 6642.43,-9448.41" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="5.45" points="6670.73,-9519.21 6790.71,-9388.76 6613.82,-9377.73 6670.73,-9519.21" />
+<text xml:space="preserve" text-anchor="middle" x="4724.67" y="-11284.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.11</text>
+</g>
+
+<g id="node39" class="node node-has-tip" data-nodeid="lipidprofile_aip" data-label-en="AIP" data-label-jp="血漿動脈硬化指数" data-tooltip="Lipid Profile : Atherogenic Index of Plasma_log10(Triglycerides/HDL-Cholesterol)" data-parents="ogtt_hba1c_jds:0.271408">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="6592.67" cy="-11409" rx="1384.8" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="6592.67" y="-11246.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">血漿動脈硬化指数</text>
+</g>
+
+<g id="edge68" class="edge">
+<title>ogtt_hba1c_jds-&gt;lipidprofile_aip</title>
+<path fill="none" stroke="#1b5e20" stroke-width="13.57" d="M6529.91,-13404.44C6542.59,-13001.52 6565.44,-12275.32 6579.8,-11819.23" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="13.57" points="6769.69,-11825.22 6584.83,-11659.32 6389.9,-11813.26 6769.69,-11825.22" />
+<text xml:space="preserve" text-anchor="middle" x="6965.61" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.27</text>
+</g>
+
+<g id="edge20" class="edge">
+<title>med_antihypertensive_use-&gt;gtt_hr_mean</title>
+<path fill="none" stroke="#b71c1c" stroke-width="7.44" d="M6641.33,-15780.67C6103.2,-15395.06 4941.55,-14562.66 4261.94,-14075.67" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="7.44" points="4322.66,-13991.09 4131.95,-13982.53 4201.36,-14160.36 4322.66,-13991.09" />
+<text xml:space="preserve" text-anchor="middle" x="5889.85" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.15</text>
+</g>
+
+<g id="edge56" class="edge">
+<title>med_antihypertensive_use-&gt;hematology_platelet_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="6.96" d="M7228.14,-15780.46C7488.91,-15593.5 7873.42,-15305.44 8181.67,-15023.25 8341.58,-14876.87 8322.8,-14769.82 8512.42,-14664.75 8536.16,-14651.6 11404.67,-14115.25 12836.42,-13848.09" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="6.96" points="12854.24,-13943.81 12993.66,-13818.75 12818.52,-13752.38 12854.24,-13943.81" />
+<text xml:space="preserve" text-anchor="middle" x="8917.05" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.14</text>
+</g>
+
+<g id="edge17" class="edge">
+<title>gtt_sbp_mean-&gt;gtt_dbp_mean</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M17478.64,-13417.93C17254.21,-13249.94 17004.43,-13014.35 16881.42,-12733.25 16763.87,-12464.6 16766.83,-12134.89 16799.36,-11871.8" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="17048.4,-11910.27 16823.59,-11713.9 16550.24,-11833.82 17048.4,-11910.27" />
+<text xml:space="preserve" text-anchor="middle" x="17286.05" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.72</text>
+</g>
+
+<g id="edge64" class="edge">
+<title>gtt_sbp_mean-&gt;liverfn_total_protein</title>
+<path fill="none" stroke="#1b5e20" stroke-width="9.98" d="M17968.52,-13404.68C17994.37,-13107.61 17983.09,-12653.35 17731.67,-12374.75 17624.87,-12256.4 15642.65,-11796.39 14581.16,-11556.86" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="9.98" points="14612.13,-11420.65 14425.36,-11521.8 14550.79,-11693.2 14612.13,-11420.65" />
+<text xml:space="preserve" text-anchor="middle" x="18320.24" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.20</text>
+</g>
+
+<g id="edge4" class="edge">
+<title>gtt_hr_mean-&gt;ogtt_glucose_0min</title>
+<path fill="none" stroke="#1b5e20" stroke-width="8.14" d="M3228.57,-13430.61C2959.5,-13264.31 2645.84,-13026.29 2452.67,-12733.25 1565.44,-11387.28 1594.67,-10821.08 1594.67,-9209 1594.67,-9209 1594.67,-9209 1594.67,-4979 1594.67,-4302.58 1989.74,-3604.65 2281.74,-3181.17" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="8.14" points="2374.46,-3247.41 2374.41,-3050.98 2188.8,-3115.25 2374.46,-3247.41" />
+<text xml:space="preserve" text-anchor="middle" x="1999.3" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.16</text>
+</g>
+
+<g id="edge18" class="edge">
+<title>gtt_hr_mean-&gt;gtt_dbp_mean</title>
+<path fill="none" stroke="#1b5e20" stroke-width="12.42" d="M4045.7,-13413.9C4409.79,-13097.43 5048.69,-12600.65 5698.42,-12374.75 7565.81,-11725.5 12602.62,-11901.59 14569.67,-11703.23 14867.5,-11673.19 15186.17,-11636.2 15489.12,-11598.73" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="12.42" points="15510.63,-11771.26 15647.81,-11578.88 15467.46,-11426.23 15510.63,-11771.26" />
+<text xml:space="preserve" text-anchor="middle" x="6103.05" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.25</text>
+</g>
+
+<g id="edge34" class="edge">
+<title>gtt_hr_mean-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="8.59" d="M3752.58,-13404.36C3759.55,-13133.6 3752.92,-12722.25 3674.67,-12374.75 3548.66,-11815.09 3133.94,-11625.9 3394.42,-11114.77 3748.16,-10420.68 4123.23,-10447.46 4812.67,-10084.75 5128.81,-9918.43 5986.15,-9626.98 6602.45,-9426.28" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="8.59" points="6639.4,-9540.75 6754.54,-9377 6565.25,-9311.89 6639.4,-9540.75" />
+<text xml:space="preserve" text-anchor="middle" x="3799.05" y="-11284.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.17</text>
+</g>
+
+<g id="node14" class="node node-has-tip" data-nodeid="hx_ht" data-label-en="ARU2" data-label-jp="高血圧歴" data-tooltip="Past Medical History : Hypertension" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M1901.25,-18487.05C1901.25,-18487.05 968.1,-18487.05 968.1,-18487.05 962.1,-18487.05 956.1,-18481.05 956.1,-18475.05 956.1,-18475.05 956.1,-18082.95 956.1,-18082.95 956.1,-18076.95 962.1,-18070.95 968.1,-18070.95 968.1,-18070.95 1901.25,-18070.95 1901.25,-18070.95 1907.25,-18070.95 1913.25,-18076.95 1913.25,-18082.95 1913.25,-18082.95 1913.25,-18475.05 1913.25,-18475.05 1913.25,-18481.05 1907.25,-18487.05 1901.25,-18487.05" />
+<text xml:space="preserve" text-anchor="middle" x="1434.67" y="-18154.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">ARU2</text>
+</g>
+
+<g id="edge14" class="edge">
+<title>hx_ht-&gt;med_antihypertensive_use</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M1388.39,-18070.52C1336.88,-17779.46 1294.77,-17252.29 1581.42,-16954.75 2284.94,-16224.52 5110.36,-16526.74 6094.67,-16283.23 6137.04,-16272.75 6180.29,-16260.99 6223.69,-16248.36" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="6298.74,-16488.93 6376.37,-16200.69 6148.55,-16007.82 6298.74,-16488.93" />
+<text xml:space="preserve" text-anchor="middle" x="1986.05" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.76</text>
+</g>
+
+<g id="node15" class="node node-has-tip" data-nodeid="hx_dyslipidemia" data-label-en="ARU6" data-label-jp="高脂血症歴" data-tooltip="Past Medical History : Dyslipidemia" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M22379.87,-16159.55C22379.87,-16159.55 21147.47,-16159.55 21147.47,-16159.55 21141.47,-16159.55 21135.47,-16153.55 21135.47,-16147.55 21135.47,-16147.55 21135.47,-15830.45 21135.47,-15830.45 21135.47,-15824.45 21141.47,-15818.45 21147.47,-15818.45 21147.47,-15818.45 22379.87,-15818.45 22379.87,-15818.45 22385.87,-15818.45 22391.87,-15824.45 22391.87,-15830.45 22391.87,-15830.45 22391.87,-16147.55 22391.87,-16147.55 22391.87,-16153.55 22385.87,-16159.55 22379.87,-16159.55" />
+<text xml:space="preserve" text-anchor="middle" x="21763.67" y="-15826.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">高脂血症歴</text>
+</g>
+
+<g id="edge26" class="edge">
+<title>hx_dyslipidemia-&gt;hematology_mcv</title>
+<path fill="none" stroke="#1b5e20" stroke-width="5" d="M21742.25,-15818.36C21696.87,-15459.08 21589.98,-14612.84 21525.88,-14105.36" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="5" points="21595.34,-14096.73 21505.84,-13946.77 21456.45,-14114.28 21595.34,-14096.73" />
+<text xml:space="preserve" text-anchor="middle" x="22041.1" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.09</text>
+</g>
+
+<g id="node16" class="node node-has-tip" data-nodeid="dm_tx_ohasama_hosp" data-label-en="IRYOU1" data-label-jp="糖尿病通院大迫" data-tooltip="Diabetes Management : Treated at Ohasama Hospital (1=Yes, 0=No)" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M3779.87,-16159.55C3779.87,-16159.55 2079.47,-16159.55 2079.47,-16159.55 2073.47,-16159.55 2067.47,-16153.55 2067.47,-16147.55 2067.47,-16147.55 2067.47,-15830.45 2067.47,-15830.45 2067.47,-15824.45 2073.47,-15818.45 2079.47,-15818.45 2079.47,-15818.45 3779.87,-15818.45 3779.87,-15818.45 3785.87,-15818.45 3791.87,-15824.45 3791.87,-15830.45 3791.87,-15830.45 3791.87,-16147.55 3791.87,-16147.55 3791.87,-16153.55 3785.87,-16159.55 3779.87,-16159.55" />
+<text xml:space="preserve" text-anchor="middle" x="2929.67" y="-15826.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">糖尿病通院大迫</text>
+</g>
+
+<g id="edge9" class="edge">
+<title>dm_tx_ohasama_hosp-&gt;ogtt_hba1c_jds</title>
+<path fill="none" stroke="#1b5e20" stroke-width="6.36" d="M3067.75,-15818.15C3297.1,-15544.89 3781.75,-15004.03 4288.42,-14664.75 4696.28,-14391.64 5194.1,-14167.61 5616.04,-14004.41" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="6.36" points="5647.53,-14087.75 5765.71,-13947.86 5584.55,-13921.07 5647.53,-14087.75" />
+<text xml:space="preserve" text-anchor="middle" x="4693.05" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.13</text>
+</g>
+
+<g id="node17" class="node node-has-tip" data-nodeid="symp_thirst" data-label-en="ARU12" data-label-jp="喉の渇き" data-tooltip="Diabetes Symptom: Dryness of mouth/throat (Xerostomia)" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M23292.12,-7302.05C23292.12,-7302.05 22181.22,-7302.05 22181.22,-7302.05 22175.22,-7302.05 22169.22,-7296.05 22169.22,-7290.05 22169.22,-7290.05 22169.22,-6897.95 22169.22,-6897.95 22169.22,-6891.95 22175.22,-6885.95 22181.22,-6885.95 22181.22,-6885.95 23292.12,-6885.95 23292.12,-6885.95 23298.12,-6885.95 23304.12,-6891.95 23304.12,-6897.95 23304.12,-6897.95 23304.12,-7290.05 23304.12,-7290.05 23304.12,-7296.05 23298.12,-7302.05 23292.12,-7302.05" />
+<text xml:space="preserve" text-anchor="middle" x="22736.67" y="-6969.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">ARU12</text>
+</g>
+
+<g id="node31" class="node node-has-tip" data-nodeid="hematology_hematocrit" data-label-en="Hct" data-label-jp="血球容積" data-tooltip="Hematology : Hematocrit (Volume percentage of RBCs in blood)" data-parents="symp_thirst:-0.004824,hematology_rbc_count:0.197491,hematology_mcv:0.347996,hematology_mch:-0.258381,hematology_mchc:-0.137650,hematology_hemoglobin:0.876409">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18023.67" cy="-4980" rx="722.95" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="18023.67" y="-4817.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">血球容積</text>
+</g>
+
+<g id="edge48" class="edge">
+<title>symp_thirst-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#b71c1c" stroke-width="5" d="M22678.52,-6885.71C22588.75,-6605.97 22388.68,-6113.29 22034.67,-5857.75 20859.62,-5009.53 20243.71,-5568.32 18836.67,-5221.19 18796.09,-5211.18 18754.51,-5200.44 18712.65,-5189.24" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="5" points="18731.49,-5121.82 18558.6,-5146.48 18694.04,-5256.72 18731.49,-5121.82" />
+<text xml:space="preserve" text-anchor="middle" x="22714" y="-5912.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.00</text>
+</g>
+
+<g id="node18" class="node node-has-tip" data-nodeid="symp_fatigue" data-label-en="ARU32" data-label-jp="倦怠感" data-tooltip="Diabetes Symptom: General feeling of weariness/lethargy (Fatigue)" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M20136.12,-9416.05C20136.12,-9416.05 19025.22,-9416.05 19025.22,-9416.05 19019.22,-9416.05 19013.22,-9410.05 19013.22,-9404.05 19013.22,-9404.05 19013.22,-9011.95 19013.22,-9011.95 19013.22,-9005.95 19019.22,-8999.95 19025.22,-8999.95 19025.22,-8999.95 20136.12,-8999.95 20136.12,-8999.95 20142.12,-8999.95 20148.12,-9005.95 20148.12,-9011.95 20148.12,-9011.95 20148.12,-9404.05 20148.12,-9404.05 20148.12,-9410.05 20142.12,-9416.05 20136.12,-9416.05" />
+<text xml:space="preserve" text-anchor="middle" x="19580.67" y="-9083.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">ARU32</text>
+</g>
+
+<g id="node30" class="node node-has-tip" data-nodeid="hematology_hemoglobin" data-label-en="Hb" data-label-jp="血色素量" data-tooltip="Hematology : Hemoglobin (Oxygen-carrying protein in blood)" data-parents="symp_fatigue:-0.013530,hematology_rbc_count:0.983793,hematology_mch:0.314122,hematology_mchc:0.138952,hematology_basophil_count:-0.010736">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="18023.67" cy="-7094" rx="722.95" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="18023.67" y="-6931.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">血色素量</text>
+</g>
+
+<g id="edge43" class="edge">
+<title>symp_fatigue-&gt;hematology_hemoglobin</title>
+<path fill="none" stroke="#b71c1c" stroke-width="5" d="M19427.84,-8999.68C19164.68,-8642.72 18622.73,-7907.59 18294.43,-7462.27" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="5" points="18350.96,-7420.99 18199.68,-7333.74 18238.28,-7504.06 18350.96,-7420.99" />
+<text xml:space="preserve" text-anchor="middle" x="19259.9" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.01</text>
+</g>
+
+<g id="node19" class="node node-has-tip" data-nodeid="fh_dm_relative_5" data-label-en="HAI5" data-label-jp="子供糖尿病" data-tooltip="Family Diabetic History : Children" data-parents="">
+<path fill="#fff7ed" stroke="#ea580c" d="M20803.87,-18449.55C20803.87,-18449.55 19571.47,-18449.55 19571.47,-18449.55 19565.47,-18449.55 19559.47,-18443.55 19559.47,-18437.55 19559.47,-18437.55 19559.47,-18120.45 19559.47,-18120.45 19559.47,-18114.45 19565.47,-18108.45 19571.47,-18108.45 19571.47,-18108.45 20803.87,-18108.45 20803.87,-18108.45 20809.87,-18108.45 20815.87,-18114.45 20815.87,-18120.45 20815.87,-18120.45 20815.87,-18437.55 20815.87,-18437.55 20815.87,-18443.55 20809.87,-18449.55 20803.87,-18449.55" />
+<text xml:space="preserve" text-anchor="middle" x="20187.67" y="-18116.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#431407">子供糖尿病</text>
+</g>
+
+<g id="edge44" class="edge">
+<title>hematology_rbc_count-&gt;hematology_hemoglobin</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M15447.76,-8987.95C15957.23,-8613.56 16997.54,-7849.07 17588.35,-7414.9" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="17737.36,-7618.13 17717.06,-7320.32 17438.91,-7212 17737.36,-7618.13" />
+<text xml:space="preserve" text-anchor="middle" x="17163.37" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.98</text>
+</g>
+
+<g id="edge49" class="edge">
+<title>hematology_rbc_count-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#1b5e20" stroke-width="9.87" d="M15459.16,-8989.64C15663.12,-8830.13 15919.39,-8595.69 16069.67,-8330.25 16401.25,-7744.61 16098.14,-7453.59 16401.42,-6852.81 16710.4,-6240.74 17263.76,-5665.03 17637.25,-5317.79" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="9.87" points="17730.2,-5420.13 17755.28,-5210.17 17543.91,-5215.82 17730.2,-5420.13" />
+<text xml:space="preserve" text-anchor="middle" x="16806.05" y="-6969.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.20</text>
+</g>
+
+<g id="node23" class="node node-has-tip" data-nodeid="hematology_mchc" data-label-en="mchc" data-label-jp="平均赤血球Hb濃度" data-tooltip="Hematology : Mean Corpuscular Hemoglobin Concentration" data-parents="hematology_mcv:-1.465626,hematology_mch:1.595909">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="20106.67" cy="-11409" rx="1521.09" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="20106.67" y="-11284.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">平均赤血球Hb濃度</text>
+</g>
+
+<g id="edge30" class="edge">
+<title>hematology_mcv-&gt;hematology_mchc</title>
+<path fill="none" stroke="#b71c1c" stroke-width="18" d="M21331.83,-13459.08C21104.01,-13078.06 20654.96,-12327.02 20368.39,-11847.72" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="18" points="20584.74,-11718.5 20286.34,-11710.49 20152.16,-11977.14 20584.74,-11718.5" />
+<text xml:space="preserve" text-anchor="middle" x="21237.08" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-1.47</text>
+</g>
+
+<g id="edge50" class="edge">
+<title>hematology_mcv-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#1b5e20" stroke-width="17.4" d="M21549.14,-13458.16C21670.77,-13044.5 21898.67,-12168.23 21898.67,-11410 21898.67,-11410 21898.67,-11410 21898.67,-7093 21898.67,-6375.22 19822.91,-5576.77 18709.89,-5200.24" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="17.4" points="18787.36,-4969.29 18558.41,-5149.62 18632.97,-5431.37 18787.36,-4969.29" />
+<text xml:space="preserve" text-anchor="middle" x="22303.3" y="-9083.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.35</text>
+</g>
+
+<g id="node38" class="node node-has-tip" data-nodeid="lipidprofile_LDL_HDL_ratio" data-label-en="LDL_HDL_ratio" data-label-jp="動脈硬化指数" data-tooltip="Lipid Profile : LDL/HDL Ratio (Atherogenic Index)" data-parents="hematology_mcv:-0.189009">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="23877.67" cy="-11409" rx="1708.3" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="23877.67" y="-11284.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">LDL_HDL_ratio</text>
+</g>
+
+<g id="edge67" class="edge">
+<title>hematology_mcv-&gt;lipidprofile_LDL_HDL_ratio</title>
+<path fill="none" stroke="#b71c1c" stroke-width="9.45" d="M21721.95,-13462.56C22130.48,-13073.58 22951.08,-12292.25 23453.63,-11813.75" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="9.45" points="23544.48,-11909.94 23569.12,-11703.79 23362.01,-11718.3 23544.48,-11909.94" />
+<text xml:space="preserve" text-anchor="middle" x="23184.55" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.19</text>
+</g>
+
+<g id="edge10" class="edge">
+<title>hematology_mch-&gt;ogtt_hba1c_jds</title>
+<path fill="none" stroke="#b71c1c" stroke-width="11.04" d="M11694.4,-15764.12C11263.27,-15615.49 10763.85,-15380.38 10420.67,-15023.25 10301.7,-14899.44 10405.75,-14777.99 10276.67,-14664.75 10077.05,-14489.61 8696.73,-14163.89 7666.94,-13939.73" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="11.04" points="7699.73,-13788.74 7510.67,-13905.91 7634.37,-14090.76 7699.73,-13788.74" />
+<text xml:space="preserve" text-anchor="middle" x="10785.17" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.22</text>
+</g>
+
+<g id="edge22" class="edge">
+<title>hematology_mch-&gt;hematology_rbc_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="18" d="M12337.75,-15698.77C11730.36,-14907.26 10210.75,-12661.72 11183.67,-11114.77 11870.59,-10022.58 13377.47,-9542 14323.33,-9341.42" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="18" points="14373.21,-9588.43 14480.12,-9309.74 14273.38,-9094.42 14373.21,-9588.43" />
+<text xml:space="preserve" text-anchor="middle" x="11262.62" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.47</text>
+</g>
+
+<g id="edge27" class="edge">
+<title>hematology_mch-&gt;hematology_mcv</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M12345.96,-15698.62C12146.02,-15403.94 11922.33,-14950.85 12183.42,-14664.75 12734.82,-14060.54 18702.56,-14091.09 19514.67,-13993.23 19790.1,-13960.04 20086.46,-13918.67 20363.25,-13877.56" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="20400.27,-14126.83 20521.02,-13853.83 20325.32,-13628.43 20400.27,-14126.83" />
+<text xml:space="preserve" text-anchor="middle" x="12588.05" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.77</text>
+</g>
+
+<g id="edge31" class="edge">
+<title>hematology_mch-&gt;hematology_mchc</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M12555.67,-15694.39C12534.97,-15421.65 12486.14,-15007.23 12371.67,-14664.75 12186.93,-14112.01 11741.64,-13922.92 12008.42,-13404.77 12369.16,-12704.14 12718.71,-12664.2 13451.67,-12374.75 15555.16,-11544.08 16261.65,-12055.05 18495.67,-11703.23 18611.3,-11685.02 18731.41,-11665.08 18851.57,-11644.44" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="18894.66,-11892.73 19009.01,-11617 18808.11,-11396.22 18894.66,-11892.73" />
+<text xml:space="preserve" text-anchor="middle" x="12413.05" y="-13574.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+1.60</text>
+</g>
+
+<g id="edge45" class="edge">
+<title>hematology_mch-&gt;hematology_hemoglobin</title>
+<path fill="none" stroke="#1b5e20" stroke-width="15.71" d="M12570.53,-15694.48C12569.58,-15215.21 12564.68,-14234.75 12541.67,-13404.77 12520.7,-12648.08 12483.15,-12460.02 12466.42,-11703.23 12460.65,-11441.76 12374.73,-11359.71 12466.42,-11114.77 13273.29,-8959.36 16029.6,-7767.24 17331.73,-7312.49" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="15.71" points="17402.52,-7520.67 17482.77,-7260.84 17260.23,-7104.55 17402.52,-7520.67" />
+<text xml:space="preserve" text-anchor="middle" x="12871.05" y="-11284.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.31</text>
+</g>
+
+<g id="edge51" class="edge">
+<title>hematology_mch-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#b71c1c" stroke-width="12.92" d="M12700.11,-15695.64C12803.19,-15416.85 12905.99,-14992.15 12745.67,-14664.75 12531.65,-14227.64 12249,-14311.37 11880.67,-13993.23 11181.96,-13389.71 10381.67,-13478.28 10381.67,-12555 10381.67,-12555 10381.67,-12555 10381.67,-7093 10381.67,-5703.18 15136.9,-5191.83 17145.25,-5037.84" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="12.92" points="17158.61,-5218.21 17304.71,-5025.94 17131.69,-4857.48 17158.61,-5218.21" />
+<text xml:space="preserve" text-anchor="middle" x="10746.17" y="-10139.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.26</text>
+</g>
+
+<g id="edge57" class="edge">
+<title>hematology_mch-&gt;hematology_platelet_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="6.48" d="M12706,-15695.9C12895.38,-15287.13 13239.86,-14543.57 13450.69,-14088.5" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="6.48" points="13532.95,-14126.73 13517.9,-13943.42 13368.33,-14050.47 13532.95,-14126.73" />
+<text xml:space="preserve" text-anchor="middle" x="13528.64" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.13</text>
+</g>
+
+<g id="edge23" class="edge">
+<title>hematology_mchc-&gt;hematology_rbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="11.95" d="M19168.14,-11177.16C18557.62,-11010.61 17752.58,-10759.67 17078.42,-10443.25 16531.8,-10186.69 15954.84,-9800.08 15575.98,-9528.06" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="11.95" points="15674.55,-9392.81 15446.73,-9434.12 15477.76,-9663.56 15674.55,-9392.81" />
+<text xml:space="preserve" text-anchor="middle" x="17483.05" y="-10139.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.24</text>
+</g>
+
+<g id="edge46" class="edge">
+<title>hematology_mchc-&gt;hematology_hemoglobin</title>
+<path fill="none" stroke="#1b5e20" stroke-width="6.95" d="M19664.79,-11127.07C19184.07,-10793.14 18440.63,-10187.17 18114.42,-9449.19 17833.6,-8813.86 17885.43,-7985.41 17952.14,-7499.68" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="6.95" points="18048.28,-7514.46 17976.17,-7341.66 17855.96,-7485.22 18048.28,-7514.46" />
+<text xml:space="preserve" text-anchor="middle" x="18519.05" y="-9083.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.14</text>
+</g>
+
+<g id="edge52" class="edge">
+<title>hematology_mchc-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#b71c1c" stroke-width="6.88" d="M20170.61,-11114.94C20260.68,-10652.87 20397.12,-9729.14 20237.67,-8966.81 19928.91,-7490.53 19719.68,-7109.06 18877.67,-5857.75 18746.23,-5662.41 18568.59,-5471.92 18409.36,-5318.68" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="6.88" points="18475.12,-5248.25 18292.4,-5209.55 18343.65,-5389.15 18475.12,-5248.25" />
+<text xml:space="preserve" text-anchor="middle" x="20457.25" y="-8026.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.14</text>
+</g>
+
+<g id="node25" class="node node-has-tip" data-nodeid="hematology_neutrophil_count" data-label-en="neut" data-label-jp="好中球" data-tooltip="Hematology : Neutrophils (The most common type of white blood cell)" data-parents="hematology_eosinophil_count:-0.262326,hematology_basophil_count:-0.047771,hematology_lymphocyte_count:-0.952542">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="26755.67" cy="-13699" rx="538.92" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="26755.67" y="-13574.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">neut</text>
+</g>
+
+<g id="edge39" class="edge">
+<title>hematology_eosinophil_count-&gt;hematology_neutrophil_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="13.12" d="M26690.3,-15694.44C26703.01,-15306.76 26725.52,-14619.78 26740.53,-14162.1" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="13.12" points="26924.05,-14168.18 26745.77,-14002.25 26557,-14156.15 26924.05,-14168.18" />
+<text xml:space="preserve" text-anchor="middle" x="27087.17" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.26</text>
+</g>
+
+<g id="node27" class="node node-has-tip" data-nodeid="hematology_basophil_count" data-label-en="baso" data-label-jp="好塩基球" data-tooltip="Hematology : Basophils (Involved in inflammatory reactions)" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="25120.67" cy="-15989" rx="589.3" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="25120.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">baso</text>
+</g>
+
+<g id="edge40" class="edge">
+<title>hematology_basophil_count-&gt;hematology_neutrophil_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="5" d="M25279.31,-15705.27C25436.45,-15431.91 25689.22,-15009.6 25939.67,-14664.75 26083.06,-14467.33 26255.89,-14259.34 26405.5,-14087.23" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="5" points="26457.84,-14133.72 26511.02,-13967.37 26352.76,-14041.21 26457.84,-14133.72" />
+<text xml:space="preserve" text-anchor="middle" x="26304.17" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.05</text>
+</g>
+
+<g id="edge47" class="edge">
+<title>hematology_basophil_count-&gt;hematology_hemoglobin</title>
+<path fill="none" stroke="#b71c1c" stroke-width="5" d="M25392.97,-15727.8C25560.53,-15547.99 25760.02,-15293.3 25850.67,-15023.25 25941.5,-14752.71 26515.8,-12309.58 25675.67,-11114.77 24567.54,-9538.81 23350.5,-10397.82 21673.67,-9449.19 20710.56,-8904.34 20605.82,-8561.75 19669.67,-7971.75 19318.68,-7750.54 18906.66,-7531.11 18582.65,-7367.11" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="5" points="18614.17,-7304.61 18439.77,-7295.51 18551.45,-7429.77 18614.17,-7304.61" />
+<text xml:space="preserve" text-anchor="middle" x="26316.76" y="-11284.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.01</text>
+</g>
+
+<g id="node28" class="node node-has-tip" data-nodeid="hematology_monocyte_count" data-label-en="mono" data-label-jp="単球" data-tooltip="Hematology : Monocytes (Large phagocytic white cells)" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="21673.67" cy="-18279" rx="677.34" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="21673.67" y="-18154.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">mono</text>
+</g>
+
+<g id="node29" class="node node-has-tip" data-nodeid="hematology_lymphocyte_count" data-label-en="lymph" data-label-jp="リンパ球" data-tooltip="Hematology : Lymphocytes (Key immune system cells)" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="28379.67" cy="-15989" rx="727.72" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="28379.67" y="-15864.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">lymph</text>
+</g>
+
+<g id="edge41" class="edge">
+<title>hematology_lymphocyte_count-&gt;hematology_neutrophil_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="18" d="M28197.91,-15703.9C28023.01,-15433.4 27748.71,-15016.52 27496.67,-14664.75 27362.49,-14477.47 27208.11,-14274.61 27075.11,-14103.46" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="18" points="27273.82,-13948.48 26976.74,-13977.66 26876.78,-14258.93 27273.82,-13948.48" />
+<text xml:space="preserve" text-anchor="middle" x="28111.13" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.95</text>
+</g>
+
+<g id="edge53" class="edge">
+<title>hematology_hemoglobin-&gt;hematology_hematocrit</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M18023.67,-6852.53C18023.67,-6496.95 18023.67,-5826.24 18023.67,-5391.79" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="18275.67,-5391.99 18023.67,-5231.99 17771.67,-5391.99 18275.67,-5391.99" />
+<text xml:space="preserve" text-anchor="middle" x="18428.3" y="-5912.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.88</text>
+</g>
+
+<g id="edge2" class="edge">
+<title>hematology_hematocrit-&gt;phy_bmi</title>
+<path fill="none" stroke="#1b5e20" stroke-width="5" d="M17762.77,-4754.6C17513.54,-4511.42 17197.61,-4109.09 17356.42,-3743.75 17472.65,-3476.4 17703.5,-3249.54 17917.67,-3083.1" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="5" points="17959.04,-3139.58 18046.56,-2988.45 17876.17,-3026.74 17959.04,-3139.58" />
+<text xml:space="preserve" text-anchor="middle" x="17761.05" y="-3798.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.08</text>
+</g>
+
+<g id="edge5" class="edge">
+<title>hematology_hematocrit-&gt;ogtt_glucose_0min</title>
+<path fill="none" stroke="#1b5e20" stroke-width="5.99" d="M18158.6,-4742.61C18296.66,-4465.86 18458.28,-4011.38 18206.67,-3743.75 17686.89,-3190.87 6173.67,-2868.1 3255.99,-2794.99" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="5.99" points="3258.3,-2711.21 3096.27,-2791.03 3254.14,-2878.79 3258.3,-2711.21" />
+<text xml:space="preserve" text-anchor="middle" x="18742.83" y="-3798.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.12</text>
+</g>
+
+<g id="edge35" class="edge">
+<title>hematology_platelet_count-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="10.22" d="M13258.91,-13491.85C12734.84,-13179.56 11792.55,-12533.89 11341.42,-11703.23 10994.69,-11064.77 11603.4,-10619.59 11111.67,-10084.75 10718.12,-9656.68 9149.06,-9410.2 8146.32,-9293.4" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="10.22" points="8162.5,-9151.29 7987.46,-9275.45 8130.39,-9435.55 8162.5,-9151.29" />
+<text xml:space="preserve" text-anchor="middle" x="11746.05" y="-11284.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.20</text>
+</g>
+
+<g id="edge65" class="edge">
+<title>hematology_platelet_count-&gt;liverfn_total_protein</title>
+<path fill="none" stroke="#1b5e20" stroke-width="6.66" d="M13573.98,-13458.2C13519.75,-13191.36 13456.17,-12748.52 13529.42,-12374.75 13568.29,-12176.43 13648.14,-11967.44 13725.8,-11794.88" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="6.66" points="13810.11,-11834.86 13794.25,-11650.32 13641.45,-11755 13810.11,-11834.86" />
+<text xml:space="preserve" text-anchor="middle" x="13934.05" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.13</text>
+</g>
+
+<g id="node34" class="node node-has-tip" data-nodeid="liverfn_alt_gpt" data-label-en="GPT" data-label-jp="GPT" data-tooltip="Liver Function : Alanine Aminotransferase (Key liver health marker)" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="9518.67" cy="-18279" rx="526.72" ry="294.23" />
+<text xml:space="preserve" text-anchor="middle" x="9518.67" y="-18154.25" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">GPT</text>
+</g>
+
+<g id="edge11" class="edge">
+<title>liverfn_alt_gpt-&gt;ogtt_hba1c_jds</title>
+<path fill="none" stroke="#1b5e20" stroke-width="12.06" d="M9010.3,-18201.45C8279.51,-18079.15 6900.8,-17802.2 5816.67,-17313.25 5069.34,-16976.2 4671.66,-17006.91 4286.42,-16283.23 4163.53,-16052.36 4179.55,-15933.47 4286.42,-15694.77 4609.83,-14972.49 5338.34,-14404 5875.99,-14061.71" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="12.06" points="5964.94,-14205.28 6011.98,-13977.44 5787.01,-13918.17 5964.94,-14205.28" />
+<text xml:space="preserve" text-anchor="middle" x="4691.05" y="-15864.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.24</text>
+</g>
+
+<g id="edge36" class="edge">
+<title>liverfn_alt_gpt-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="6.68" d="M9253.66,-18024.61C8906.59,-17672.49 8315.12,-16997.51 8083.67,-16283.23 7906.65,-15736.92 8127.01,-11685.97 8067.67,-11114.77 8019.37,-10649.8 8032.6,-10517.04 7854.67,-10084.75 7781.63,-9907.28 7671.61,-9726.92 7567.65,-9576.38" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="6.68" points="7643.76,-9521.92 7474.38,-9446.64 7491.79,-9631.18 7643.76,-9521.92" />
+<text xml:space="preserve" text-anchor="middle" x="8442.73" y="-13574.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.13</text>
+</g>
+
+<g id="edge60" class="edge">
+<title>liverfn_alt_gpt-&gt;liverfn_ast_got</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M9923.98,-18090.57C10241.36,-17925.62 10673.86,-17658.08 10949.67,-17313.25 11056.49,-17179.7 10952.95,-17057.8 11089.42,-16954.75 12353.55,-16000.28 16650.49,-16673.4 18185.67,-16283.23 18225.37,-16273.14 18265.72,-16261.08 18305.97,-16247.68" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="18393.97,-16483.82 18455.74,-16191.77 18217.71,-16011.64 18393.97,-16483.82" />
+<text xml:space="preserve" text-anchor="middle" x="11494.05" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.90</text>
+</g>
+
+<g id="edge62" class="edge">
+<title>liverfn_alt_gpt-&gt;liverfn_gamma_gtp</title>
+<path fill="none" stroke="#1b5e20" stroke-width="13.57" d="M10028.59,-18204.77C10890.39,-18059.38 12490.45,-17683.55 11943.67,-16954.75 11303.32,-16101.22 10652.41,-16616.25 9638.67,-16283.23 9594.28,-16268.64 9548.65,-16253.19 9502.78,-16237.31" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="13.57" points="9566.25,-16058.19 9352,-16183.93 9439.41,-16416.46 9566.25,-16058.19" />
+<text xml:space="preserve" text-anchor="middle" x="12459.45" y="-17009.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.27</text>
+</g>
+
+<g id="node37" class="node node-has-tip" data-nodeid="liverfn_albumin" data-label-en="ALB" data-label-jp="アルブミン" data-tooltip="Liver Function : Albumin (Main protein produced by the liver)" data-parents="">
+<ellipse fill="#d4f3fc" stroke="#0f172a" cx="14994.67" cy="-15989" rx="888.41" ry="241.19" />
+<text xml:space="preserve" text-anchor="middle" x="14994.67" y="-15826.75" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="320.00" fill="#013c54">アルブミン</text>
+</g>
+
+<g id="edge24" class="edge">
+<title>liverfn_albumin-&gt;hematology_rbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="9.1" d="M14906.33,-15748.66C14840.09,-15555.84 14755.02,-15276.16 14719.67,-15023.25 14697.62,-14865.45 14714.94,-14824.01 14719.67,-14664.75 14736.35,-14104.02 14561.96,-13915.21 14794.67,-13404.77 14971.66,-13016.56 15315.3,-13126.55 15480.67,-12733.25 15542.43,-12586.37 15502.25,-12532.62 15480.67,-12374.75 15438.73,-12067.79 15344.45,-12008.85 15293.67,-11703.23 15172.72,-10975.17 15148.94,-10113.04 15146.59,-9616.71" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="9.1" points="15273.94,-9616.77 15146.56,-9456.79 15019.24,-9616.81 15273.94,-9616.77" />
+<text xml:space="preserve" text-anchor="middle" x="15918.19" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.18</text>
+</g>
+
+<g id="edge37" class="edge">
+<title>liverfn_albumin-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="12.23" d="M14907.68,-15748.49C14822.38,-15471.12 14728.77,-15008.37 14906.67,-14664.75 15144.4,-14205.59 15618.95,-14452.39 15856.67,-13993.23 15976.92,-13760.97 15986.88,-13631.59 15856.67,-13404.77 15562,-12891.47 15022.75,-13233.66 14706.67,-12733.25 14321.16,-12122.91 15019.76,-11679.18 14569.67,-11114.77 13766.5,-10107.59 9882.52,-9521.69 8137.16,-9305.34" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="12.23" points="8157.97,-9135.41 7978.41,-9285.96 8116.49,-9475.28 8157.97,-9135.41" />
+<text xml:space="preserve" text-anchor="middle" x="15071.17" y="-12429.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.24</text>
+</g>
+
+<g id="edge58" class="edge">
+<title>liverfn_albumin-&gt;hematology_platelet_count</title>
+<path fill="none" stroke="#b71c1c" stroke-width="9.04" d="M14853.04,-15750.42C14616.7,-15353.98 14139.97,-14554.3 13856.76,-14079.24" />
+<polygon fill="#b71c1c" stroke="#b71c1c" stroke-width="9.04" points="13965.66,-14014.8 13775.04,-13942.16 13748.28,-14144.39 13965.66,-14014.8" />
+<text xml:space="preserve" text-anchor="middle" x="14758.84" y="-14719.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#b71c1c">-0.18</text>
+</g>
+
+<g id="edge66" class="edge">
+<title>liverfn_albumin-&gt;liverfn_total_protein</title>
+<path fill="none" stroke="#1b5e20" stroke-width="17.01" d="M15068.94,-15748.2C15141.28,-15482.53 15231.81,-15041.82 15168.67,-14664.75 14986.65,-13577.68 14432.76,-12389.63 14128.4,-11794.76" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="17.01" points="14339.93,-11685.4 14054.85,-11653.21 13917.32,-11904.98 14339.93,-11685.4" />
+<text xml:space="preserve" text-anchor="middle" x="15407.11" y="-13574.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.34</text>
+</g>
+
+<g id="edge7" class="edge">
+<title>lipidprofile_aip-&gt;ogtt_homa_ir</title>
+<path fill="none" stroke="#1b5e20" stroke-width="18" d="M6384.39,-11170.32C6048.38,-10786.88 5384.32,-10029.08 4987.21,-9575.92" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="18" points="5176.99,-9410.13 4882.02,-9455.88 4797.94,-9742.3 5176.99,-9410.13" />
+<text xml:space="preserve" text-anchor="middle" x="6149.17" y="-10139.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.39</text>
+</g>
+
+<g id="edge38" class="edge">
+<title>lipidprofile_aip-&gt;hematology_wbc_count</title>
+<path fill="none" stroke="#1b5e20" stroke-width="9.29" d="M6668.3,-11167.69C6786.43,-10792.29 7016.03,-10062.67 7159.22,-9607.65" />
+<polygon fill="#1b5e20" stroke="#1b5e20" stroke-width="9.29" points="7283.25,-9646.69 7207.25,-9455.04 7035.19,-9568.63 7283.25,-9646.69" />
+<text xml:space="preserve" text-anchor="middle" x="7405.28" y="-10139.25" font-family="Helvetica,sans-Serif" font-size="320.00" fill="#1b5e20">+0.19</text>
+</g>
+</g>
+</g><defs><filter id="node-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter><filter id="edge-glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs></svg>
+        <div class="zoom-controls mobile-only">
+            <div class="zoom-btn" id="zoom-in">+</div>
+            <div class="zoom-btn" id="zoom-out">−</div>
+        </div>
+    </div>
+
+    <div id="resizer"></div>
+
+    <div class="sidebar-container" id="sidebar-html-container"
+        data-total-pathways="68" 
+        data-highest-src="hematology_mch" 
+        data-highest-tgt="hematology_mchc" 
+        data-highest-val="+1.5959" 
+        data-lowest-src="hematology_mcv" 
+        data-lowest-tgt="hematology_mchc" 
+        data-lowest-val="-1.4656">
+        <div class="sidebar-content" id="sidebar-content-area"></div>
+        <div class="sidebar-footer" id="sidebar-footer-area"></div>
+    </div>
+    <script>
+    (function () {
+    "use strict";
+
+    var svg = document.querySelector("svg");
+    var NS  = "http://www.w3.org/2000/svg";
+    var currentLang = "jp";
+    var selectedNodes = new Set();
+    var shiftSel = [];          
+    var edgeRefCount = new Map();
+    var HOVER_SCALE = 4.0;
+    var showCalc = true;             
+    var lastEffect = null;           
+    var transform = { x: 0, y: 0, scale: 1 };
+    var graphLayer = document.getElementById("graph-layer");
+    var mobileLinkMode = false;
+
+    function applyTransform() {
+        graphLayer.setAttribute("transform", "translate(" + transform.x + "," + transform.y + ") scale(" + transform.scale + ")");
+    }
+
+    var isPanning = false;
+    var startPoint = { x: 0, y: 0 };
+    var startTransform = { x: 0, y: 0 };
+
+    svg.addEventListener("wheel", function(e) {
+        e.preventDefault();
+        var pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+        var svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+        var layerP = { x: (svgP.x - transform.x) / transform.scale, y: (svgP.y - transform.y) / transform.scale };
+        var zoom = Math.exp(e.deltaY * -0.001);
+        var newScale = transform.scale * zoom;
+        if (newScale < 0.2 || newScale > 10) return;
+        transform.scale = newScale;
+        transform.x = svgP.x - layerP.x * transform.scale;
+        transform.y = svgP.y - layerP.y * transform.scale;
+        applyTransform();
+    }, { passive: false });
+
+    svg.addEventListener("mousedown", function(e) {
+        if (e.target.closest('#graph-layer') && !e.target.closest('.node-has-tip')) {
+            isPanning = true; startPoint = { x: e.clientX, y: e.clientY }; startTransform = { x: transform.x, y: transform.y };
+        }
+    });
+    svg.addEventListener("mousemove", function(e) {
+        if (isPanning) {
+            var PAN_SPEED = 1.5;
+            var dx = (e.clientX - startPoint.x) * (1 / transform.scale) * PAN_SPEED;
+            var dy = (e.clientY - startPoint.y) * (1 / transform.scale) * PAN_SPEED;
+            transform.x = startTransform.x + dx * transform.scale;
+            transform.y = startTransform.y + dy * transform.scale;
+            applyTransform();
+        }
+    });
+    svg.addEventListener("mouseup", function() { isPanning = false; });
+    svg.addEventListener("mouseleave", function() { isPanning = false; });
+
+    var isTouchPanning = false;
+    var lastTouch = { x: 0, y: 0 };
+
+    svg.addEventListener("touchstart", function(e) {
+        if (e.touches.length === 1 && !e.target.closest('.node-has-tip') && !e.target.closest('.zoom-btn')) {
+            isTouchPanning = true;
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+    }, {passive: false});
+
+    svg.addEventListener("touchmove", function(e) {
+        if (isTouchPanning && e.touches.length === 1) {
+            e.preventDefault(); 
+            var PAN_SPEED = 1.5;
+            var dx = (e.touches[0].clientX - lastTouch.x) * (1 / transform.scale) * PAN_SPEED;
+            var dy = (e.touches[0].clientY - lastTouch.y) * (1 / transform.scale) * PAN_SPEED;
+            transform.x += dx * transform.scale;
+            transform.y += dy * transform.scale;
+            lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            applyTransform();
+        }
+    }, {passive: false});
+
+    svg.addEventListener("touchend", function() { isTouchPanning = false; });
+
+    document.getElementById('zoom-in').addEventListener('click', function(e) {
+        e.stopPropagation(); transform.scale = Math.min(10, transform.scale * 1.3); applyTransform();
+    });
+    document.getElementById('zoom-out').addEventListener('click', function(e) {
+        e.stopPropagation(); transform.scale = Math.max(0.2, transform.scale / 1.3); applyTransform();
+    });
+
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "Escape") { clearShiftSel(); resetHighlighting(); }
+    });
+
+    svg.addEventListener("contextmenu", function(e) {
+        e.preventDefault(); transform.x = 0; transform.y = 0; transform.scale = 1; applyTransform(); 
+        selectedNodes.clear(); resetHighlighting();
+    });
+
+    var tipG  = document.createElementNS(NS, "g");
+    tipG.id   = "svg-tooltip-g";
+    tipG.style.pointerEvents = "none";
+    var tipBg = document.createElementNS(NS, "rect");
+    tipBg.setAttribute("fill", "#263238"); tipBg.setAttribute("rx", "6"); tipBg.setAttribute("ry", "6");
+    var tipTx = document.createElementNS(NS, "text");
+    tipTx.setAttribute("fill", "#FFFFFF"); tipTx.setAttribute("font-family", "Helvetica, sans-serif"); tipTx.setAttribute("font-size", (16 * HOVER_SCALE) + "px");
+    tipTx.setAttribute("x",  (12 * HOVER_SCALE) + ""); tipTx.setAttribute("y",  (24 * HOVER_SCALE) + "");
+    tipG.appendChild(tipBg); tipG.appendChild(tipTx); svg.appendChild(tipG); tipG.style.display = "none";
+
+    function showHoverTip(text, mouseX, mouseY) {
+        if (!text || text.trim() === "") return;
+        tipTx.textContent = text; tipG.style.display = "block";
+        var bb  = tipTx.getBBox(); var pad = 12 * HOVER_SCALE;
+        tipBg.setAttribute("width",  ((bb.width > 0 ? bb.width : text.length * 9 * HOVER_SCALE) + pad * 2) + "");
+        tipBg.setAttribute("height", ((bb.height > 0 ? bb.height : 22 * HOVER_SCALE) + pad * 1.5) + "");
+        var pt = svg.createSVGPoint(); pt.x = mouseX; pt.y = mouseY;
+        var svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+        tipG.setAttribute("transform", "translate(" + (svgPt.x + 20) + "," + (svgPt.y + 14) + ")");
+     }
+
+    function hideHoverTip() { tipG.style.display = "none"; }
+
+    function showTotalEffect(srcId, tgtId, resultObj) {
+        lastEffect = { src: srcId, tgt: tgtId, value: resultObj.value, posPaths: resultObj.posPaths, negPaths: resultObj.negPaths };
+        _renderTotalEffect();
+    }
+
+    function buildPathHtml(pObj, pathIdx, type) {
+        var langEn = (currentLang === "en");
+        function getNodeName(id) {
+            var nd = getSvgNodeById(id);
+            return nd ? (langEn ? nd.getAttribute("data-label-en") : nd.getAttribute("data-label-jp")) : id;
+        }
+
+        var valSign = pObj.val >= 0 ? "+" : "";
+        var valClass = pObj.val >= 0 ? "positive" : "negative";
+        var chainHtml = '';
+        pObj.nodes.forEach(function(nodeId, idx) {
+            chainHtml += '<span class="path-node-badge">' + getNodeName(nodeId) + '</span>';
+            if (idx < pObj.nodes.length - 1) {
+                var w = pObj.weights[idx];
+                var arrowClass = w >= 0 ? 'positive' : 'negative';
+                chainHtml += '<span class="path-arrow ' + arrowClass + '">\u279C</span>';
+            }
+        });
+
+        return '<div class="path-row" id="path-row-' + type + '-' + pathIdx + '">' +
+               '  <div class="path-chain">' + chainHtml + '</div>' +
+               '  <div class="path-value-badge ' + valClass + '">' + valSign + pObj.val.toFixed(4) + '</div>' +
+               '</div>';
+    }
+
+    function addPathRowEventListeners(paths, type) {
+        paths.forEach(function(pObj, pathIdx) {
+            var row = document.getElementById("path-row-" + type + "-" + pathIdx);
+            if (row) {
+                row.addEventListener("mouseenter", function() { highlightPaths([pObj], lastEffect.src, lastEffect.tgt); });
+                row.addEventListener("mouseleave", function() {
+                    var allActivePaths = [].concat((lastEffect.posPaths || []).slice(0, 6), (lastEffect.negPaths || []).slice(0, 6));
+                    highlightPaths(allActivePaths, lastEffect.src, lastEffect.tgt);
+                });
+            }
+        });
+    }
+
+    function _renderTotalEffect() {
+        var contentArea = document.getElementById("sidebar-content-area");
+        if (!contentArea) return;
+        var langEn = (currentLang === "en");
+
+        if (!lastEffect) {
+            contentArea.innerHTML = '<div class="welcome-card">' +
+                '  <div class="welcome-icon">\u26A1</div>' +
+                '  <h2 class="welcome-title">' + (langEn ? 'Causal Explorer' : '因果パス探索') + '</h2>' +
+                '  <p class="welcome-text">' + (langEn ? 'Decompose and trace causal relationships between nodes.' : 'ネットワーク内のノード間の因果関係を分解・追跡します。') + '</p>' +
+                '  <div class="instruction-box">' +
+                '    <div class="instruction-step">' +
+                '      <span class="step-number">1</span>' +
+                '      <span class="step-text">' + (langEn ? 'Desktop: Hold <strong>Shift</strong> and click a node.<br>Mobile: Tap <strong>🔗 Link Mode</strong> then tap a node.' : 'PC: <strong>Shift</strong>キーを押しながらクリック。<br>スマホ: <strong>🔗 Link Mode</strong>をタップしてノードを選択。') + '</span>' +
+                '    </div>' +
+                '    <div class="instruction-step">' +
+                '      <span class="step-number">2</span>' +
+                '      <span class="step-text">' + (langEn ? 'Select a second node to trace the effect.' : '2つ目のノードを選択して結果を追跡します。') + '</span>' +
+                '    </div>' +
+                '  </div></div>';
+            return;
+        }
+
+        function getNodeName(id) {
+            var nd = getSvgNodeById(id);
+            return nd ? (langEn ? nd.getAttribute("data-label-en") : nd.getAttribute("data-label-jp")) : id;
+        }
+
+        var sName = getNodeName(lastEffect.src); var tName = getNodeName(lastEffect.tgt);
+        var val = lastEffect.value; var sign  = val >= 0 ? "+" : ""; var valStr = sign + val.toFixed(4);
+        var effectType = val > 0 ? (langEn ? 'Positive Causal Effect' : '正の因果効果') : (val < 0 ? (langEn ? 'Negative Causal Effect' : '負の因果効果') : (langEn ? 'No Causal Effect' : '因果効果なし'));
+        var badgeClass = val > 0 ? 'positive' : (val < 0 ? 'negative' : 'neutral');
+        var valClass = val > 0 ? 'positive' : (val < 0 ? 'negative' : 'neutral');
+        var interpretation = langEn 
+            ? 'Holding other variables constant, a 1 std dev increase in <strong>' + sName + '</strong> causes an estimated <strong>' + val.toFixed(4) + '</strong> std dev change in <strong>' + tName + '</strong>.'
+            : '\u4ed6\u306e\u5909\u6570\u3092\u4e00\u5b9a\u3068\u3057\u305f\u5834\u5408\u3001<strong>' + sName + '</strong>\u304c 1 \u6a19\u6e96\u504f\u5dee\u5897\u52a0\u3059\u308b\u3068\u3001<strong>' + tName + '</strong>\u304c\u63a8\u5b9a\u3067 <strong>' + val.toFixed(4) + '</strong> \u6a19\u6e96\u504f\u5dee\u5909\u5316\u3057\u307e\u3059\u3002';
+
+        var topPos = (lastEffect.posPaths || []).slice(0, 6); var topNeg = (lastEffect.negPaths || []).slice(0, 6);
+
+        var html = '<div class="card connection-header-card"><div class="connection-nodes">' +
+            '<div class="node-pill cause-pill">' + sName + '</div><div class="connection-arrow">\u279C</div><div class="node-pill effect-pill">' + tName + '</div></div></div>' +
+            '<div class="card total-effect-card"><div class="effect-inline-row"><div class="card-label">' + (langEn ? 'Total Causal Effect:' : '総合因果効果:') + '</div>' +
+            '<div class="effect-value ' + valClass + '">' + valStr + '</div><div class="effect-badge ' + badgeClass + '">' + effectType + '</div></div>' +
+            '<div class="effect-description">' + interpretation + '</div></div>';
+
+        if (showCalc) {
+            html += '<div class="card"><h3 class="pathways-section-title positive">\ud83d\udfe2 ' + (langEn ? 'Positive Pathways' : '正の因果パス') + ' (' + topPos.length + ' ' + (langEn ? 'of' : '/') + ' ' + lastEffect.posPaths.length + ')</h3><div class="pathways-list">';
+            if (topPos.length === 0) { html += ' <div class="no-paths-text">' + (langEn ? 'No positive pathways detected.' : '検出された正のパスはありません。') + '</div>'; } 
+            else { topPos.forEach(function(pObj, pathIdx) { html += buildPathHtml(pObj, pathIdx, 'pos'); }); }
+            html += '</div></div>';
+
+            html += '<div class="card"><h3 class="pathways-section-title negative">\ud83d\udd34 ' + (langEn ? 'Negative Pathways' : '負の因果パス') + ' (' + topNeg.length + ' ' + (langEn ? 'of' : '/') + ' ' + lastEffect.negPaths.length + ')</h3><div class="pathways-list">';
+            if (topNeg.length === 0) { html += ' <div class="no-paths-text">' + (langEn ? 'No negative pathways detected.' : '検出された負のパスはありません。') + '</div>'; } 
+            else { topNeg.forEach(function(pObj, pathIdx) { html += buildPathHtml(pObj, pathIdx, 'neg'); }); }
+            html += '</div></div>';
+        }
+
+        contentArea.innerHTML = html;
+        addPathRowEventListeners(topPos, 'pos'); addPathRowEventListeners(topNeg, 'neg');
+    }
+
+    function hideTotalEffect() { lastEffect = null; _renderTotalEffect(); }
+
+    function buildAdjMap() {
+        var adj = {};
+        document.querySelectorAll(".node-has-tip").forEach(function(nd) {
+            var childId = nd.getAttribute("data-nodeid"); var raw = nd.getAttribute("data-parents") || "";
+            if (!raw.trim()) return;
+            raw.split(",").forEach(function(tok) {
+                var parts = tok.split(":");
+                if (parts.length === 2) {
+                    var parentId = parts[0], weight = parseFloat(parts[1]);
+                    if (!adj[parentId]) adj[parentId] = [];
+                    adj[parentId].push({target: childId, weight: weight});
+                }
+            });
+        });
+        return adj;
+    }
+
+    function calcTotalEffectDecomposition(srcId, tgtId) {
+        var adj = buildAdjMap(); var allPaths = [];
+        function dfs(cur, tgt, currentPathWeights, pathNodes) {
+            if (cur === tgt) {
+                if (currentPathWeights.length > 0) {
+                    allPaths.push({ nodes: pathNodes, weights: currentPathWeights, val: currentPathWeights.reduce(function(a, b) { return a * b; }, 1.0) });
+                }
+                return;
+            }
+            var neighbors = adj[cur] || [];
+            for (var i = 0; i < neighbors.length; i++) {
+                if (pathNodes.indexOf(neighbors[i].target) !== -1) continue;
+                dfs(neighbors[i].target, tgt, currentPathWeights.concat([neighbors[i].weight]), pathNodes.concat([neighbors[i].target]));
+            }
+        }
+        dfs(srcId, tgtId, [], [srcId]);
+        var totalSum = allPaths.reduce(function(acc, p) { return acc + p.val; }, 0.0);
+        var posPaths = [], negPaths = [];
+        allPaths.forEach(function(p) { if (p.val >= 0) posPaths.push(p); else negPaths.push(p); });
+        posPaths.sort(function(a, b){ return b.val - a.val; }); negPaths.sort(function(a, b){ return a.val - b.val; });
+        return { value: totalSum, posPaths: posPaths, negPaths: negPaths };
+    }
+
+    function resetHighlighting() {
+        document.querySelectorAll(".node-has-tip").forEach(function(nd) { nd.setAttribute("opacity", "1"); unhighlightNode(nd); });
+        document.querySelectorAll("g.edge").forEach(function(eg) { eg.setAttribute("opacity", "1"); removeEdgeHL(eg); });
+    }
+
+    function highlightPaths(paths, srcId, tgtId) {
+        document.querySelectorAll(".node-has-tip").forEach(function(nd) { nd.setAttribute("opacity", "0.15"); unhighlightNode(nd); });
+        document.querySelectorAll("g.edge").forEach(function(eg) { eg.setAttribute("opacity", "0.15"); removeEdgeHL(eg); });
+        var validNodes = new Set(); var validEdges = new Set();
+        paths.forEach(function(pObj) {
+            for(var i=0; i<pObj.nodes.length; i++) {
+                validNodes.add(pObj.nodes[i]);
+                if(i < pObj.nodes.length - 1) validEdges.add(pObj.nodes[i] + "->" + pObj.nodes[i+1]);
+            }
+        });
+        validNodes.forEach(function(nid) {
+            var nd = getSvgNodeById(nid);
+            if (!nd) return;
+            nd.setAttribute("opacity", "1");
+            var s = nd.querySelector("polygon, ellipse, path");
+            if (s) {
+                if (!s._origStroke) s._origStroke = s.getAttribute("stroke") || "";
+                if (!s._origSW)     s._origSW     = s.getAttribute("stroke-width") || "1";
+                s.setAttribute("filter", "url(#node-glow)");
+
+                if (nid === srcId) { s.setAttribute("stroke", "#3B82F6"); s.setAttribute("stroke-width", "28"); } 
+                else if (nid === tgtId) { s.setAttribute("stroke", "#8B5CF6"); s.setAttribute("stroke-width", "28"); }
+                else { s.setAttribute("stroke", "#FFD700"); s.setAttribute("stroke-width", "16"); }
+            }
+        });
+        document.querySelectorAll("g.edge").forEach(function(eg) {
+            var t = eg.querySelector("title"); if (!t) return;
+            var parts = t.textContent.trim().split(/\s*->\s*|\s*--\s*/);
+            if (parts.length === 2 && validEdges.has(parts[0] + "->" + parts[1])) { eg.setAttribute("opacity", "1"); applyEdgeHL(eg, true); }
+        });
+    }
+
+    function getIncidentEdges(nodeId) {
+        var edges = [];
+        document.querySelectorAll("g.edge").forEach(function(eg) {
+            var t = eg.querySelector("title"); if (!t) return;
+            var parts = t.textContent.trim().split(/\s*->\s*|\s*--\s*/);
+            if (parts.indexOf(nodeId) !== -1) edges.push(eg);
+        });
+        return edges;
+    }
+
+    var edgeSaveMap = new Map();
+    function applyEdgeHL(eg, isPathMode) {
+        if (!edgeSaveMap.has(eg)) {
+            edgeSaveMap.set(eg, true);
+            eg._origOpacity  = eg.getAttribute("opacity") || "1";
+            eg.querySelectorAll("path, polygon").forEach(function(p) {
+                p._origSW  = p.getAttribute("stroke-width") || "1"; p._origOp2 = p.getAttribute("opacity") || "1";
+            });
+        }
+        eg.setAttribute("opacity", "1"); eg.setAttribute("filter", "url(#edge-glow)");
+        eg.querySelectorAll("path, polygon").forEach(function(p) {
+            var bSW = parseFloat(p._origSW) || 1; var nSW = isPathMode ? Math.min(24, bSW * 3.5) : Math.min(12, bSW * 1.8); 
+            p.setAttribute("stroke-width", nSW); p.setAttribute("opacity", "1");
+        });
+    }
+    function removeEdgeHL(eg) {
+        if (!edgeSaveMap.has(eg)) return;
+        eg.setAttribute("opacity", eg._origOpacity);
+        eg.querySelectorAll("path, polygon").forEach(function(p) { p.setAttribute("stroke-width", p._origSW); p.setAttribute("opacity", p._origOp2); });
+        eg.removeAttribute("filter"); edgeSaveMap.delete(eg);
+    }
+
+    function highlightNode(nd) {
+        var s = nd.querySelector("polygon, ellipse, path"); if (!s) return;
+        if (!s._origStroke) s._origStroke = s.getAttribute("stroke") || "";
+        if (!s._origSW)     s._origSW     = s.getAttribute("stroke-width") || "1";
+        s.setAttribute("filter", "url(#node-glow)"); s.setAttribute("stroke", "#FFD700"); s.setAttribute("stroke-width", "30");
+    }
+    function unhighlightNode(nd) {
+        var s = nd.querySelector("polygon, ellipse, path"); if (!s) return;
+        s.removeAttribute("filter"); s.setAttribute("stroke", s._origStroke || ""); s.setAttribute("stroke-width", s._origSW || "1");
+    }
+
+    function getSvgNodeById(id) {
+        var found = null; document.querySelectorAll(".node-has-tip").forEach(function(nd) { if (nd.getAttribute("data-nodeid") === id) found = nd; }); return found;
+    }
+
+    function selectNode(nd, nid) {
+        if (selectedNodes.has(nid)) return;
+        selectedNodes.add(nid); highlightNode(nd);
+        getIncidentEdges(nid).forEach(function(eg) {
+            var c = edgeRefCount.get(eg) || 0; edgeRefCount.set(eg, c + 1); if (c === 0) applyEdgeHL(eg, false);
+        });
+    }
+    function deselectNode(nd, nid) {
+        if (!selectedNodes.has(nid)) return;
+        selectedNodes.delete(nid); unhighlightNode(nd);
+        getIncidentEdges(nid).forEach(function(eg) {
+            var c = edgeRefCount.get(eg) || 0;
+            if (c === 1) { edgeRefCount.delete(eg); removeEdgeHL(eg); } else if (c > 1) edgeRefCount.set(eg, c - 1);
+        });
+        hideHoverTip();
+    }
+
+    function clearShiftSel() {
+        shiftSel.forEach(function(id) { var nd = getSvgNodeById(id); if (nd) unhighlightNode(nd); });
+        shiftSel = []; hideTotalEffect(); resetHighlighting();
+    }
+
+    function initSidebarFooter() {
+        var footer = document.getElementById("sidebar-footer-area"); if (!footer) return;
+        var dataset = document.getElementById("sidebar-html-container").dataset;
+        footer.innerHTML = 
+            '<div class="summary-card"><div class="summary-title" id="summary-title-el">Causal Network Architecture Summary</div>' +
+            '<div class="summary-list"><div class="summary-item" id="summary-item-total">Total Causal Pathways Listed: <strong>' + dataset.totalPathways + '</strong></div>' +
+            '<div class="summary-item" id="summary-item-highest">Highest Direct Causal Path: <strong id="summary-highest-link">[' + dataset.highestSrc + ' -> ' + dataset.highestTgt + '] = ' + dataset.highestVal + '</strong></div>' +
+            '<div class="summary-item" id="summary-item-lowest">Lowest Direct Causal Path: <strong id="summary-lowest-link">[' + dataset.lowestSrc + ' -> ' + dataset.lowestTgt + '] = ' + dataset.lowestVal + '</strong></div></div></div>' +
+            '<div class="toggle-box"><button id="btn-html-en" class="btn-html">English</button><button id="btn-html-jp" class="btn-html">日本語</button>' +
+            '<button id="btn-html-calc" class="btn-html btn-paths">経路非表示</button><button id="btn-mobile-link" class="btn-html mobile-only">🔗 Link Mode</button></div>';
+
+        document.getElementById("btn-html-en").addEventListener("click", function(e) { e.stopPropagation(); setLanguage("en"); });
+        document.getElementById("btn-html-jp").addEventListener("click", function(e) { e.stopPropagation(); setLanguage("jp"); });
+        document.getElementById("btn-html-calc").addEventListener("click", function(e) { e.stopPropagation(); showCalc = !showCalc; updateCalcButtonLabel(); _renderTotalEffect(); });
+
+        var btnMobile = document.getElementById("btn-mobile-link");
+        if(btnMobile) {
+            btnMobile.addEventListener("click", function(e) {
+                e.stopPropagation(); mobileLinkMode = !mobileLinkMode;
+                if (mobileLinkMode) { btnMobile.classList.add("active-paths"); btnMobile.textContent = "🔗 Select Cause Node..."; } 
+                else { btnMobile.classList.remove("active-paths"); btnMobile.textContent = "🔗 Link Mode"; clearShiftSel(); }
+            });
+        }
+    }
+
+    function setLanguage(lang) {
+        currentLang = lang;
+        var btnEn = document.getElementById("btn-html-en"), btnJp = document.getElementById("btn-html-jp");
+        if (btnEn && btnJp) { if (lang === "en") { btnEn.classList.add("active-lang"); btnJp.classList.remove("active-lang"); } else { btnJp.classList.add("active-lang"); btnEn.classList.remove("active-lang"); } }
+        document.querySelectorAll(".node-has-tip").forEach(function(nd) {
+            var txts = nd.querySelectorAll("text"); var txEl = txts[txts.length - 1];
+            if (txEl) { txEl.textContent = lang === "en" ? nd.getAttribute("data-label-en") : nd.getAttribute("data-label-jp"); }
+        });
+        hideHoverTip();
+        updateCalcButtonLabel(); _renderTotalEffect();
+    }
+
+    function updateCalcButtonLabel() {
+        var btn = document.getElementById("btn-html-calc"); if (!btn) return;
+        var isEn = (currentLang === "en"); btn.textContent = showCalc ? (isEn ? "Hide Paths" : "経路非表示") : (isEn ? "Show Paths" : "経路表示");
+        if (showCalc) btn.classList.add("active-paths"); else btn.classList.remove("active-paths");
+    }
+
+    document.querySelectorAll(".node-has-tip").forEach(function(nd) {
+        var nid = nd.getAttribute("data-nodeid") || ""; var rawTip = nd.getAttribute("data-tooltip") || "";
+
+        nd.addEventListener("mouseenter", function(e) { if (!selectedNodes.has(nid) && shiftSel.indexOf(nid) === -1) { highlightNode(nd); showHoverTip(rawTip, e.clientX, e.clientY); } });
+        nd.addEventListener("mousemove", function(e) { if (!selectedNodes.has(nid) && shiftSel.indexOf(nid) === -1 && tipG.style.display !== "none") { showHoverTip(rawTip, e.clientX, e.clientY); } });
+        nd.addEventListener("mouseleave", function() { if (!selectedNodes.has(nid) && shiftSel.indexOf(nid) === -1) { unhighlightNode(nd); hideHoverTip(); } });
+
+        nd.addEventListener("click", function(e) {
+            e.preventDefault(); e.stopPropagation();
+
+            var isLinkAction = e.shiftKey || mobileLinkMode;
+
+            if (isLinkAction) {
+                hideHoverTip();
+                if (shiftSel.length === 2) clearShiftSel();
+                if (shiftSel.indexOf(nid) === -1) {
+                    shiftSel.push(nid);
+                    var s = nd.querySelector("polygon, ellipse, path");
+                    if (s) {
+                        s._origStroke = s.getAttribute("stroke")       || "";
+                        s._origSW     = s.getAttribute("stroke-width") || "1";
+                        s.setAttribute("stroke",       shiftSel.length === 1 ? "#3B82F6" : "#8B5CF6");
+                        s.setAttribute("stroke-width", "28"); s.setAttribute("filter", "url(#node-glow)");
+                    }
+                }
+                if (shiftSel.length === 2) {
+                    var resObj = calcTotalEffectDecomposition(shiftSel[0], shiftSel[1]);
+                    showTotalEffect(shiftSel[0], shiftSel[1], resObj);
+                    var allActivePaths = [].concat((resObj.posPaths || []).slice(0, 6), (resObj.negPaths || []).slice(0, 6));
+                    highlightPaths(allActivePaths, shiftSel[0], shiftSel[1]);
+
+                    if (mobileLinkMode) {
+                        mobileLinkMode = false; var btnMobile = document.getElementById("btn-mobile-link");
+                        if(btnMobile) { btnMobile.classList.remove("active-paths"); btnMobile.textContent = "🔗 Link Mode"; }
+                    }
+                }
+            } else {
+                clearShiftSel();
+                if (window.innerWidth <= 768) {
+                     var clientX = e.clientX || (e.touches && e.touches[0].clientX);
+                     var clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                     showHoverTip(rawTip, clientX, clientY);
+                }
+                if (selectedNodes.has(nid)) deselectNode(nd, nid); else selectNode(nd, nid);
+            }
+        });
+    });
+
+    document.querySelectorAll(".node-has-tip").forEach(function(nd) { var texts = nd.querySelectorAll("text"); var textEl = texts[texts.length - 1]; });
+
+    svg.addEventListener("click", function(e) {
+        if (e.target === svg || e.target.tagName === "svg") {
+            var toDesel = Array.from(selectedNodes);
+            toDesel.forEach(function(id) { var nd = getSvgNodeById(id); if (nd) deselectNode(nd, id); });
+            clearShiftSel(); hideHoverTip();
+        }
+    });
+
+    _renderTotalEffect();
+    initSidebarFooter();
+    setLanguage("jp");
+
+    var resizer = document.getElementById('resizer');
+    var sidebar = document.getElementById('sidebar-html-container');
+    var svgContainer = document.getElementById('svg-container');
+    var isDraggingResizer = false;
+
+    resizer.addEventListener('mousedown', function(e) {
+        isDraggingResizer = true; resizer.classList.add('is-dragging'); document.body.style.cursor = 'col-resize';
+        svgContainer.style.pointerEvents = 'none'; sidebar.style.pointerEvents = 'none'; document.body.style.userSelect = 'none';
+    });
+    document.addEventListener('mousemove', function(e) {
+        if (!isDraggingResizer) return;
+        var newWidth = window.innerWidth - e.clientX;
+        if (newWidth < 300) newWidth = 300;
+        if (newWidth > window.innerWidth * 0.8) newWidth = window.innerWidth * 0.8;
+        sidebar.style.width = newWidth + 'px';
+    });
+    document.addEventListener('mouseup', function(e) {
+        if (isDraggingResizer) {
+            isDraggingResizer = false; resizer.classList.remove('is-dragging'); document.body.style.cursor = '';
+            svgContainer.style.pointerEvents = ''; sidebar.style.pointerEvents = ''; document.body.style.userSelect = '';
+        }
+    });
+    })();
+    </script>
+</body>
+</html>
