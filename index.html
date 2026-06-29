@@ -90,17 +90,12 @@
         .zoom-btn { width: 44px; height: 44px; background: #ffffff; border: 2px solid #cbd5e1; border-radius: 8px; font-size: 24px; font-weight: bold; color: #334155; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); cursor: pointer; user-select: none; }
         .zoom-btn:active { background: #e2e8f0; }
 
-        @media (min-width: 769px) {
-            .mobile-only { display: none !important; }
-        }
-
         @media (max-width: 768px) {
             body, html { flex-direction: column; height: 100%; overflow: auto; }
             #svg-container { flex: none; height: 60vh; width: 100%; border-bottom: 3px solid #cbd5e1; touch-action: none; }
             #resizer { display: none; }
             .sidebar-container { width: 100% !important; max-width: 100%; height: auto; min-height: 40vh; padding: 10px; }
             .zoom-controls { display: flex; }
-            .mobile-only { display: block !important; flex: 100%; margin-top: 5px; background-color: #e2e8f0; border-color: #cbd5e1;}
             .node-has-tip { cursor: pointer; }
         }
         </style>
@@ -818,7 +813,6 @@
     var lastEffect = null;           
     var transform = { x: 0, y: 0, scale: 1 };
     var graphLayer = document.getElementById("graph-layer");
-    var mobileLinkMode = false;
 
     function applyTransform() {
         graphLayer.setAttribute("transform", "translate(" + transform.x + "," + transform.y + ") scale(" + transform.scale + ")");
@@ -860,13 +854,26 @@
     svg.addEventListener("mouseup", function() { isPanning = false; });
     svg.addEventListener("mouseleave", function() { isPanning = false; });
 
+    // ── NATIVE PINCH-TO-ZOOM & PANNING ──
     var isTouchPanning = false;
     var lastTouch = { x: 0, y: 0 };
+    var initialPinchDist = null;
+    var initialScale = 1;
+
+    function getDistance(touches) {
+        var dx = touches[0].clientX - touches[1].clientX;
+        var dy = touches[0].clientY - touches[1].clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
 
     svg.addEventListener("touchstart", function(e) {
         if (e.touches.length === 1 && !e.target.closest('.node-has-tip') && !e.target.closest('.zoom-btn')) {
             isTouchPanning = true;
             lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        } else if (e.touches.length === 2) {
+            isTouchPanning = false;
+            initialPinchDist = getDistance(e.touches);
+            initialScale = transform.scale;
         }
     }, {passive: false});
 
@@ -880,10 +887,35 @@
             transform.y += dy * transform.scale;
             lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
             applyTransform();
+        } else if (e.touches.length === 2 && initialPinchDist) {
+            e.preventDefault(); // Prevent browser zooming/scrolling
+            var currentDist = getDistance(e.touches);
+            var zoomFactor = currentDist / initialPinchDist;
+            var newScale = initialScale * zoomFactor;
+            newScale = Math.max(0.2, Math.min(10, newScale));
+
+            // Calculate pinch center
+            var centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            var centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+
+            var pt = svg.createSVGPoint(); pt.x = centerX; pt.y = centerY;
+            var svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+            var layerP = { x: (svgP.x - transform.x) / transform.scale, y: (svgP.y - transform.y) / transform.scale };
+
+            transform.scale = newScale;
+            transform.x = svgP.x - layerP.x * transform.scale;
+            transform.y = svgP.y - layerP.y * transform.scale;
+
+            initialPinchDist = currentDist;
+            initialScale = newScale;
+            applyTransform();
         }
     }, {passive: false});
 
-    svg.addEventListener("touchend", function() { isTouchPanning = false; });
+    svg.addEventListener("touchend", function(e) { 
+        isTouchPanning = false; 
+        if (e.touches.length < 2) initialPinchDist = null;
+    });
 
     function handleZoomIn(e) {
         e.preventDefault(); e.stopPropagation(); transform.scale = Math.min(10, transform.scale * 1.3); applyTransform();
@@ -985,11 +1017,11 @@
                 '  <div class="instruction-box">' +
                 '    <div class="instruction-step">' +
                 '      <span class="step-number">1</span>' +
-                '      <span class="step-text">' + (langEn ? 'Desktop: Hold <strong>Shift</strong> and click a node.<br>Mobile: Tap <strong>🔗 Link Mode</strong> then tap a node.' : 'PC: <strong>Shift</strong>キーを押しながらクリック。<br>スマホ: <strong>🔗 Link Mode</strong>をタップしてノードを選択。') + '</span>' +
+                '      <span class="step-text">' + (langEn ? 'Desktop & Mobile: <strong>Double-click</strong> or <strong>Double-tap</strong> a node to select it as a Cause.' : 'PC＆スマホ: ノードを<strong>ダブルクリック（またはダブルタップ）</strong>して原因を選択。') + '</span>' +
                 '    </div>' +
                 '    <div class="instruction-step">' +
                 '      <span class="step-number">2</span>' +
-                '      <span class="step-text">' + (langEn ? 'Select a second node to trace the effect.' : '2つ目のノードを選択して結果を追跡します。') + '</span>' +
+                '      <span class="step-text">' + (langEn ? 'Double-tap a second node to trace the effect.' : '2つ目のノードをダブルタップして結果を追跡します。') + '</span>' +
                 '    </div>' +
                 '  </div></div>';
             return;
@@ -1190,7 +1222,7 @@
             '<div class="summary-item" id="summary-item-highest">Highest Direct Causal Path: <strong id="summary-highest-link">[' + dataset.highestSrc + ' -> ' + dataset.highestTgt + '] = ' + dataset.highestVal + '</strong></div>' +
             '<div class="summary-item" id="summary-item-lowest">Lowest Direct Causal Path: <strong id="summary-lowest-link">[' + dataset.lowestSrc + ' -> ' + dataset.lowestTgt + '] = ' + dataset.lowestVal + '</strong></div></div></div>' +
             '<div class="toggle-box"><button id="btn-html-en" class="btn-html">English</button><button id="btn-html-jp" class="btn-html">日本語</button>' +
-            '<button id="btn-html-calc" class="btn-html btn-paths">経路非表示</button><button id="btn-mobile-link" class="btn-html mobile-only">🔗 Link Mode</button></div>';
+            '<button id="btn-html-calc" class="btn-html btn-paths">経路非表示</button></div>';
 
         function bindBtn(id, cb) {
             var btn = document.getElementById(id);
@@ -1203,18 +1235,6 @@
         bindBtn("btn-html-en", function() { setLanguage("en"); });
         bindBtn("btn-html-jp", function() { setLanguage("jp"); });
         bindBtn("btn-html-calc", function() { showCalc = !showCalc; updateCalcButtonLabel(); _renderTotalEffect(); });
-
-        var btnMobile = document.getElementById("btn-mobile-link");
-        if(btnMobile) {
-            function toggleLink(e) {
-                e.preventDefault(); e.stopPropagation();
-                mobileLinkMode = !mobileLinkMode;
-                if (mobileLinkMode) { btnMobile.classList.add("active-paths"); btnMobile.textContent = "🔗 Select Cause Node..."; } 
-                else { btnMobile.classList.remove("active-paths"); btnMobile.textContent = "🔗 Link Mode"; clearShiftSel(); }
-            }
-            btnMobile.addEventListener("click", toggleLink);
-            btnMobile.addEventListener("touchend", toggleLink);
-        }
     }
 
     function setLanguage(lang) {
@@ -1235,6 +1255,10 @@
         if (showCalc) btn.classList.add("active-paths"); else btn.classList.remove("active-paths");
     }
 
+    // ── DOUBLE-TAP & CLICK LOGIC ──
+    var lastTapTime = 0;
+    var lastTappedNode = null;
+
     document.querySelectorAll(".node-has-tip").forEach(function(nd) {
         var nid = nd.getAttribute("data-nodeid") || ""; var rawTip = nd.getAttribute("data-tooltip") || "";
 
@@ -1242,11 +1266,17 @@
         nd.addEventListener("mousemove", function(e) { if (!selectedNodes.has(nid) && shiftSel.indexOf(nid) === -1 && tipG.style.display !== "none") { showHoverTip(rawTip, e.clientX, e.clientY); } });
         nd.addEventListener("mouseleave", function() { if (!selectedNodes.has(nid) && shiftSel.indexOf(nid) === -1) { unhighlightNode(nd); hideHoverTip(); } });
 
-        // ── MOBILE TOUCH & CLICK FIX ──
         function handleNodeInteraction(e) {
             e.preventDefault(); e.stopPropagation();
 
-            var isLinkAction = e.shiftKey || mobileLinkMode;
+            var currentTime = new Date().getTime();
+            // Prevent firing both touchend and click for the same action on mobile browsers
+            if (e.type === 'click' && (currentTime - lastTapTime < 100)) return;
+
+            var tapLength = currentTime - lastTapTime;
+            var isDoubleTap = (tapLength < 400 && tapLength > 0 && lastTappedNode === nid);
+
+            var isLinkAction = isDoubleTap || e.shiftKey;
 
             if (isLinkAction) {
                 hideHoverTip();
@@ -1266,12 +1296,8 @@
                     showTotalEffect(shiftSel[0], shiftSel[1], resObj);
                     var allActivePaths = [].concat((resObj.posPaths || []).slice(0, 6), (resObj.negPaths || []).slice(0, 6));
                     highlightPaths(allActivePaths, shiftSel[0], shiftSel[1]);
-
-                    if (mobileLinkMode) {
-                        mobileLinkMode = false; var btnMobile = document.getElementById("btn-mobile-link");
-                        if(btnMobile) { btnMobile.classList.remove("active-paths"); btnMobile.textContent = "🔗 Link Mode"; }
-                    }
                 }
+                lastTapTime = 0; // Reset to prevent triple-taps triggering again
             } else {
                 clearShiftSel();
                 if (window.innerWidth <= 768) {
@@ -1286,10 +1312,12 @@
                      showHoverTip(rawTip, clientX, clientY);
                 }
                 if (selectedNodes.has(nid)) deselectNode(nd, nid); else selectNode(nd, nid);
+
+                lastTapTime = currentTime;
+                lastTappedNode = nid;
             }
         }
 
-        // Bind to both click and hardware touch to bypass Safari bug
         nd.addEventListener("click", handleNodeInteraction);
         nd.addEventListener("touchend", handleNodeInteraction);
     });
@@ -1301,17 +1329,13 @@
             var toDesel = Array.from(selectedNodes);
             toDesel.forEach(function(id) { var nd = getSvgNodeById(id); if (nd) deselectNode(nd, id); });
             clearShiftSel(); hideHoverTip();
-
-            if (mobileLinkMode) {
-                mobileLinkMode = false; var btnMobile = document.getElementById("btn-mobile-link");
-                if(btnMobile) { btnMobile.classList.remove("active-paths"); btnMobile.textContent = "🔗 Link Mode"; }
-            }
+            lastTapTime = 0;
         }
     }
+
     svg.addEventListener("click", clearBg);
     svg.addEventListener("touchend", function(e) {
         if (!isTouchPanning) { clearBg(e); }
-        isTouchPanning = false; 
     });
 
     _renderTotalEffect();
