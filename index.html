@@ -818,6 +818,7 @@
         graphLayer.setAttribute("transform", "translate(" + transform.x + "," + transform.y + ") scale(" + transform.scale + ")");
     }
 
+    // ── MOUSE PANNING ──
     var isPanning = false;
     var startPoint = { x: 0, y: 0 };
     var startTransform = { x: 0, y: 0 };
@@ -854,7 +855,7 @@
     svg.addEventListener("mouseup", function() { isPanning = false; });
     svg.addEventListener("mouseleave", function() { isPanning = false; });
 
-    // ── NATIVE PINCH-TO-ZOOM & PANNING ──
+    // ── NATIVE PINCH-TO-ZOOM & PANNING (TWO FINGERS) ──
     var isTouchPanning = false;
     var lastTouch = { x: 0, y: 0 };
     var initialPinchDist = null;
@@ -1274,6 +1275,7 @@
             if (e.type === 'click' && (currentTime - lastTapTime < 100)) return;
 
             var tapLength = currentTime - lastTapTime;
+            // 400ms is standard mobile double-tap window
             var isDoubleTap = (tapLength < 400 && tapLength > 0 && lastTappedNode === nid);
 
             var isLinkAction = isDoubleTap || e.shiftKey;
@@ -1299,7 +1301,12 @@
                 }
                 lastTapTime = 0; // Reset to prevent triple-taps triggering again
             } else {
-                clearShiftSel();
+
+                // THE FIX: Do not clear selections if we are exactly halfway through making a causal link!
+                if (shiftSel.length !== 1) {
+                    clearShiftSel();
+                }
+
                 if (window.innerWidth <= 768) {
                      var clientX = 0, clientY = 0;
                      if (e.type.includes('touch') && e.changedTouches && e.changedTouches.length > 0) {
